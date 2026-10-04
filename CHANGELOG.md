@@ -179,6 +179,14 @@ Each feature is optional for the client; clients without it behave as before.
 - Rate-limit messages, tool descriptions and server instructions describe
   metered AI usage (rolling window + weekly limit, see `get_usage`) instead
   of "50 queries/day".
+- README: notices that this is an independently maintained fork, and that
+  the project is unofficial, not affiliated with Google, and automates the
+  web UI at the user's own risk. New `SECURITY.md` (private vulnerability
+  reporting).
+- Releases are published from GitHub Actions (`publish.yml`, on a `v*` tag)
+  with npm trusted publishing (OIDC). No npm token is stored, and every
+  version has a provenance attestation. CI also adds a GitHub release from
+  the CHANGELOG.
 - `@modelcontextprotocol/sdk` upgraded from 1.20 to 1.32. The invalid
   `resourceTemplates` capability was removed.
 - `add_notebook`: `description` and `topics` are now optional (see Sampling).
