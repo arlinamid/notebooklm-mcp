@@ -44,6 +44,7 @@ jobs:
         run: |
           npm run format:check
           npm run lint
+          npm audit --omit=dev --audit-level=high
       - run: npm run build
       - run: npm run test:smoke
       - name: Package contents
