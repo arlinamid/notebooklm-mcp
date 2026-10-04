@@ -31,6 +31,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { webcrypto } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -212,6 +213,12 @@ interface Connection {
 }
 
 const connectionStore = new AsyncLocalStorage<Connection>();
+
+// Node 18 has no global Web Crypto (unflagged from Node 19); the SDK's
+// Streamable-HTTP transport calls `crypto.randomUUID()` on it.
+if (!(globalThis as { crypto?: unknown }).crypto) {
+  Object.defineProperty(globalThis, "crypto", { value: webcrypto, configurable: true });
+}
 
 const LOG_LEVELS: LoggingLevel[] = [
   "debug",
