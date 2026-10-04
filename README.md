@@ -1,5 +1,12 @@
 > [!NOTE]
-> **Development continues here.** The original project ([PleasePrompto/notebooklm-mcp](https://github.com/PleasePrompto/notebooklm-mcp)) was archived in September 2026, and its last npm release (`notebooklm-mcp@2.0.0`) no longer works with the current NotebookLM UI. Development continues in this repository ([arlinamid/notebooklm-mcp](https://github.com/arlinamid/notebooklm-mcp)), published as **`@arlinamid/notebooklm-mcp`** from 3.0.0 on. Thanks to Gérôme Dexheimer for the original work.
+> **Community-maintained fork.** The original project ([PleasePrompto/notebooklm-mcp](https://github.com/PleasePrompto/notebooklm-mcp)) was archived in September 2026. Its last npm release (`notebooklm-mcp@2.0.0`) no longer works with the current NotebookLM UI.
+>
+> This fork ([arlinamid/notebooklm-mcp](https://github.com/arlinamid/notebooklm-mcp)) continues development under the MIT license and is published as **`@arlinamid/notebooklm-mcp`** from 3.0.0 on. It is maintained independently and is not endorsed by the original author. Thanks to Gérôme Dexheimer for the original work.
+
+> [!IMPORTANT]
+> **Unofficial — not affiliated with Google.** NotebookLM and Gemini are trademarks of Google LLC. This project is not affiliated with, endorsed by or sponsored by Google.
+>
+> It works by automating the NotebookLM web interface in a real browser signed in to *your* Google account. Google's terms may restrict automated access, and Google can change the interface, rate-limit or restrict accounts at any time. Use it at your own risk, preferably with an account you can afford to lose access to. The software is provided "as is", without warranty (see [LICENSE](./LICENSE)).
 
 # NotebookLM MCP Server
 

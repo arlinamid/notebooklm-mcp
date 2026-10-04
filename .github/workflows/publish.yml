@@ -1,0 +1,63 @@
+name: Publish
+
+# Publishes to npm with trusted publishing (OIDC): no npm token is stored in
+# the repository, and npm attaches a provenance attestation automatically.
+# Trigger: push a tag matching the package.json version, e.g. `v3.0.1`.
+# Prerequisite: the package exists on npm and has this repository + workflow
+# file (publish.yml) configured as a trusted publisher.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # OIDC for npm trusted publishing + provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          # No dependency cache in release builds.
+
+      - name: Tag matches package.json version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+
+      - name: npm with trusted-publishing support (>= 11.5.1)
+        run: npm install -g npm@^11.5.1 && npm --version
+
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run build
+      - run: npm run test:smoke
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+
+      - name: GitHub release from the CHANGELOG section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          node scripts/release-notes.mjs "$version" > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
