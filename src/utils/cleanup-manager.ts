@@ -19,7 +19,7 @@
 
 import fs from "fs/promises";
 import path from "path";
-import { globby } from "globby";
+import { simpleGlob } from "./simple-glob.js";
 import envPaths from "env-paths";
 import os from "os";
 import { log } from "./logger.js";
@@ -223,9 +223,13 @@ export class CleanupManager {
       }
 
       // Search for notebooklm-mcp in npx cache
-      const pattern = path.join(npxPath, "*/node_modules/notebooklm-mcp");
-      const matches = await globby(pattern, { onlyDirectories: true, absolute: true });
-      found.push(...matches);
+      // Old and current package names.
+      for (const pattern of [
+        "*/node_modules/notebooklm-mcp",
+        "*/node_modules/@arlinamid/notebooklm-mcp",
+      ]) {
+        found.push(...(await simpleGlob(npxPath, pattern, { type: "dir" })));
+      }
     } catch (error) {
       log.warning(`⚠️  Error searching NPM cache: ${error}`);
     }
@@ -247,14 +251,8 @@ export class CleanupManager {
       }
 
       // Search for notebooklm MCP logs
-      const patterns = [
-        path.join(claudeCliPath, "*/mcp-logs-notebooklm"),
-        path.join(claudeCliPath, "*notebooklm-mcp*"),
-      ];
-
-      for (const pattern of patterns) {
-        const matches = await globby(pattern, { onlyDirectories: true, absolute: true });
-        found.push(...matches);
+      for (const pattern of ["*/mcp-logs-notebooklm", "*notebooklm-mcp*"]) {
+        found.push(...(await simpleGlob(claudeCliPath, pattern, { type: "dir" })));
       }
     } catch (error) {
       log.warning(`⚠️  Error searching Claude CLI cache: ${error}`);
@@ -277,9 +275,7 @@ export class CleanupManager {
       }
 
       // Search for notebooklm-mcp projects
-      const pattern = path.join(projectsPath, "*notebooklm-mcp*");
-      const matches = await globby(pattern, { onlyDirectories: true, absolute: true });
-      found.push(...matches);
+      found.push(...(await simpleGlob(projectsPath, "*notebooklm-mcp*", { type: "dir" })));
     } catch (error) {
       log.warning(`⚠️  Error searching Claude projects: ${error}`);
     }
@@ -295,9 +291,7 @@ export class CleanupManager {
 
     try {
       // Search for notebooklm backup directories in temp
-      const pattern = path.join(this.tempDir, "notebooklm-backup-*");
-      const matches = await globby(pattern, { onlyDirectories: true, absolute: true });
-      found.push(...matches);
+      found.push(...(await simpleGlob(this.tempDir, "notebooklm-backup-*", { type: "dir" })));
     } catch (error) {
       log.warning(`⚠️  Error searching temp backups: ${error}`);
     }
@@ -320,9 +314,9 @@ export class CleanupManager {
         }
 
         // Search for MCP notebooklm logs
-        const pattern = path.join(editorPath, "**/exthost/**/*notebooklm*.log");
-        const matches = await globby(pattern, { onlyFiles: true, absolute: true });
-        found.push(...matches);
+        found.push(
+          ...(await simpleGlob(editorPath, "**/exthost/**/*notebooklm*.log", { type: "file" }))
+        );
       }
     } catch (error) {
       log.warning(`⚠️  Error searching editor logs: ${error}`);
@@ -344,12 +338,7 @@ export class CleanupManager {
       }
 
       // Search for notebooklm files in trash
-      const patterns = [path.join(trashPath, "**/*notebooklm*")];
-
-      for (const pattern of patterns) {
-        const matches = await globby(pattern, { absolute: true });
-        found.push(...matches);
-      }
+      found.push(...(await simpleGlob(trashPath, "**/*notebooklm*")));
     } catch (error) {
       log.warning(`⚠️  Error searching trash: ${error}`);
     }

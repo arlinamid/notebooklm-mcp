@@ -105,6 +105,15 @@ try {
   const bad = await client.callTool({ name: "get_notebook", arguments: { id: "does-not-exist" } });
   check(bad.isError === true, "failing tool call sets isError");
 
+  // Preview only (confirm: false) in the isolated home — nothing is deleted.
+  const cleanup = await client.callTool({ name: "cleanup_data", arguments: { confirm: false } });
+  const preview = JSON.parse(cleanup.content[0].text);
+  check(
+    preview.success === true && Array.isArray(preview.data?.preview?.categories),
+    "cleanup_data preview",
+    `${preview.data?.preview?.totalPaths ?? "?"} path(s)`
+  );
+
   await client.setLoggingLevel("error");
   check(true, "logging/setLevel");
 } catch (error) {

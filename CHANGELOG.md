@@ -272,6 +272,20 @@ Each feature is optional for the client; clients without it behave as before.
 - Chat submit button, query-input fallbacks and notebook-card selectors
   updated to the new markup.
 
+### Security
+
+- **Dropped `globby`.** Its dependency chain (fast-glob → micromatch →
+  braces / picomatch) carried high-severity advisories:
+  - GHSA-3v7f-55p6-f55p;
+  - GHSA-c2c7-rcm5-vvqj;
+  - braces stack exhaustion, which has no fixed release.
+
+  `cleanup_data` now uses a small built-in matcher
+  (`src/utils/simple-glob.ts`) that does not follow symlinks and limits
+  recursion depth. It also works on Windows paths, where the old patterns
+  never matched, and it finds the npx cache of the new package name too.
+  `npm audit` reports 0 vulnerabilities (production and dev).
+
 ### Known limitations
 
 - Google Drive and Google Play Books sources are not supported by
