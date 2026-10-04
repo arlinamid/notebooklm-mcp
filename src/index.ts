@@ -100,6 +100,8 @@ sources, ingest sources, generate Audio Overviews).
 2. \`add_notebook\` to register a NotebookLM share-URL into the local
    library (the user must provide the URL — see add_notebook for the link
    workflow). Optionally \`select_notebook\` to make it the default.
+   Or \`import_account_notebooks\` to bring in the signed-in account's own
+   notebooks without share links (dry-run first).
 3. \`ask_question\` — start asking. Save the returned \`session_id\` and
    reuse it for follow-up questions to keep context.
 
@@ -707,6 +709,17 @@ class NotebookLMMCPServer {
                 content_types?: string[];
                 use_cases?: string[];
                 tags?: string[];
+              }
+            );
+            break;
+
+          case "import_account_notebooks":
+            result = await this.toolHandlers.handleImportAccountNotebooks(
+              args as {
+                scope?: "mine" | "shared" | "all";
+                query?: string;
+                notebook_ids?: string[];
+                dry_run?: boolean;
               }
             );
             break;

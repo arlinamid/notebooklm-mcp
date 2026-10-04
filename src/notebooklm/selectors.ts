@@ -470,6 +470,18 @@ export const Selectors = {
 
   notebooks: {
     projectCard: 'a[aria-labelledby*="project-"], button[aria-labelledby*="project-"]',
+    /**
+     * Homepage notebook listing (2026-10). Every notebook — grid card or
+     * list-view row — links to `/notebook/<uuid>`. Google's "Featured
+     * notebooks" carousel uses the same cards with `.featured-project-card`.
+     */
+    homeLink: 'a[href*="/notebook/"]',
+    homeCard: "project-button",
+    homeRow: "tr",
+    featuredCard: ".featured-project-card",
+    /** Filter row: All · My notebooks · Discover (`public` glyph) · Shared with me · Collections. */
+    homeFilterButton: ".project-section-buttons-lumi > nb-button > button",
+    homeSectionHeading: "welcome-page h1, welcome-page h2, welcome-page h3",
     cardMenuButton: [
       'button[aria-label="Project Actions Menu"]',
       'button[aria-label*="menu" i]',

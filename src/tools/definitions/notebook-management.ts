@@ -85,6 +85,56 @@ export const notebookManagementTools: Tool[] = [
     },
   },
   {
+    name: "import_account_notebooks",
+    description:
+      "Read the notebooks of the signed-in Google account from the NotebookLM " +
+      "homepage and add the ones not yet in the local library. Unlike " +
+      "`add_notebook` no share-link is needed — the notebooks are opened as the " +
+      "signed-in user.\n\n" +
+      "## Workflow\n" +
+      "  1. Call with `dry_run: true` to list what the account has (`status: " +
+      '"would_import"` / `"already_in_library"`), and show the user the list.\n' +
+      "  2. Import all of them, or only the ones the user picks via " +
+      "`notebook_ids` (the `uuid` values) or a title `query`.\n" +
+      "  3. Imported entries get a placeholder description and no topics; offer " +
+      "to fill them in with `update_notebook`.\n\n" +
+      "Skips notebooks already in the library (matched by the UUID in the URL). " +
+      "Featured / Discover notebooks are never imported. Only adds library " +
+      "entries — nothing changes on Google's side.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["mine", "shared", "all"],
+          description:
+            '"mine" (default) = notebooks the account owns; "shared" = shared with ' +
+            'the account; "all" = both.',
+        },
+        query: {
+          type: "string",
+          description: "Only notebooks whose title contains this text (case-insensitive).",
+        },
+        notebook_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Only these notebooks: `uuid` values from a dry run, or notebook URLs.",
+        },
+        dry_run: {
+          type: "boolean",
+          description: "List what would be imported without changing the library. Default false.",
+        },
+      },
+    },
+    annotations: {
+      title: "Import notebooks from the Google account",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
     name: "list_notebooks",
     description:
       "List every notebook in the local library with its metadata " +

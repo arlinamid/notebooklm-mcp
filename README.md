@@ -272,6 +272,7 @@ NotebookLM meters AI usage (a rolling window that resets every few hours plus a 
 | Tool | Purpose |
 |---|---|
 | `add_notebook` | Add a NotebookLM share-URL to the local library with metadata. If `description` / `topics` are omitted, they are proposed from the source titles (written by the client's model via sampling when supported) and returned as `generated_metadata`. Requires explicit user confirmation. |
+| `import_account_notebooks` | Import the signed-in account's own (and optionally shared) notebooks from the NotebookLM homepage — no share-links needed. Skips ones already in the library; `dry_run` lists them first. |
 | `list_notebooks` | List every notebook in the library with metadata. |
 | `get_notebook` | Fetch one notebook by `id`. |
 | `select_notebook` | Set a notebook as the active default for `ask_question`. |
