@@ -100,7 +100,7 @@ ${bt}${bt}${bt}
     return `# Conversational Research Partner (NotebookLM • Gemini 2.5 • Session RAG)
 
 ## No Active Notebook
-- Visit https://notebooklm.google to create a notebook and get a share link
+- Visit https://notebook.google.com to create a notebook and get a share link
 - Use **add_notebook** to add it to your library (explains how to get the link)
 - Use **list_notebooks** to show available sources
 - Use **select_notebook** to set one active
@@ -144,7 +144,7 @@ export const askQuestionTool: Tool = {
         description:
           "Direct NotebookLM URL — overrides `notebook_id`. Use for ad-hoc " +
           "queries against notebooks not yet in your library. Format: " +
-          "`https://notebooklm.google.com/notebook/<uuid>`.",
+          "`https://notebook.google.com/notebook/<uuid>`.",
       },
       source_format: {
         type: "string",
@@ -152,12 +152,20 @@ export const askQuestionTool: Tool = {
         description:
           "How citations are returned alongside the answer:\n" +
           "  • `none` (default) — raw answer, no citation extraction (fastest)\n" +
-          "  • `footnotes` — answer plus a `Sources:` block, e.g. `[1] DocName — \"excerpt…\"`\n" +
-          "  • `inline` — `[N]` markers in the answer are replaced with `[N] (DocName: \"excerpt…\")`\n" +
+          '  • `footnotes` — answer plus a `Sources:` block, e.g. `[1] DocName — "excerpt…"`\n' +
+          '  • `inline` — `[N]` markers in the answer are replaced with `[N] (DocName: "excerpt…")`\n' +
           "  • `json` — answer text untouched; structured `sources` array on the response\n\n" +
           "Use `none` for snappy chat. Use `json` when downstream code needs to " +
           "process citations programmatically. Use `footnotes`/`inline` when " +
           "showing the answer to a human reader.",
+      },
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Answer only from these sources — each entry is a source title (exact or a unique " +
+          "substring) or source id (see `list_sources`). The notebook's own source selection " +
+          "is restored after the answer. Omit to use the current selection (normally all).",
       },
       show_browser: {
         type: "boolean",

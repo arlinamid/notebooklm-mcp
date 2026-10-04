@@ -13,6 +13,7 @@
 
 import type { Page } from "patchright";
 import { CONFIG } from "../config.js";
+import { throwIfCancelled } from "./request-context.js";
 
 // ============================================================================
 // Helper Functions
@@ -70,6 +71,7 @@ export function gaussian(mean: number, stdDev: number): number {
  * @param maxMs Maximum delay in milliseconds (default: from CONFIG)
  */
 export async function randomDelay(minMs?: number, maxMs?: number): Promise<void> {
+  throwIfCancelled();
   minMs = minMs ?? CONFIG.minDelayMs;
   maxMs = maxMs ?? CONFIG.maxDelayMs;
 

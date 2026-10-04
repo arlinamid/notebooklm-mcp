@@ -22,6 +22,7 @@
 
 import type { Page } from "patchright";
 import { safeSleep } from "../browser/watchdog.js";
+import { Selectors } from "./selectors.js";
 
 export type SourceFormat = "none" | "inline" | "footnotes" | "json";
 
@@ -143,6 +144,14 @@ async function extractExcerpt(page: Page, number: number): Promise<string> {
     while (Date.now() < deadline) {
       const text = (await page.evaluate(`
         (() => {
+          // 2026-09 UI: the marker opens an inline tooltip
+          // (xap-inline-dialog-container) holding the cited passage.
+          const tips = document.querySelectorAll(${JSON.stringify(Selectors.citations.tooltipText)});
+          if (tips.length > 0) {
+            const tip = (tips[tips.length - 1].innerText || '').trim();
+            if (tip) return tip;
+          }
+          // Legacy UI: the source panel highlights the cited passage.
           const highlights = document.querySelectorAll('.highlighted');
           if (highlights.length === 0) return '';
           const hTexts = Array.from(highlights)

@@ -8,7 +8,7 @@
 
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
-const sharedNotebookTargeting = {
+export const sharedNotebookTargeting = {
   session_id: {
     type: "string",
     description:
@@ -28,41 +28,49 @@ const sharedNotebookTargeting = {
     description:
       "Direct NotebookLM URL — overrides `notebook_id`. Use for ad-hoc " +
       "notebooks not yet in your library. Format: " +
-      "`https://notebooklm.google.com/notebook/<uuid>`.",
+      "`https://notebook.google.com/notebook/<uuid>`.",
   },
 };
 
 export const addSourceTool: Tool = {
   name: "add_source",
   description:
-    "Ingest a source into a NotebookLM notebook. Supports two source types " +
-    "in v2.0:\n" +
+    "Ingest sources into a NotebookLM notebook:\n" +
     "  • `url` — NotebookLM crawls and indexes a website\n" +
-    "  • `text` — paste raw text (treated as a copied document)\n\n" +
-    "File / YouTube / Google-Drive uploads are not yet implemented.\n\n" +
+    "  • `youtube` — a public YouTube video (its transcript is imported)\n" +
+    "  • `text` — paste raw text (treated as a copied document)\n" +
+    "  • `file` — upload local files (`file_paths`: pdf, txt, md, docx, audio, " +
+    "images …); one source per file\n\n" +
+    "For `url` / `youtube`, several URLs can be passed in `content` separated " +
+    "by spaces or new lines. Google Drive import is not implemented.\n\n" +
     "Returns `sourceCountBefore`/`sourceCountAfter` so the caller can verify " +
-    "the new source landed. Call once per source — multiple sources require " +
-    "multiple calls. NotebookLM finishes indexing within 5–30 seconds; " +
+    "the new source landed. NotebookLM finishes indexing within 5–30 seconds; " +
     "subsequent `ask_question` calls then have the new source in context. " +
     "Free notebooks cap at 50 sources.\n\n" +
     "Known quirk: pasted-text uploads occasionally redirect to a freshly " +
-    "created \"Untitled notebook\" on Google's side. The tool detects this " +
+    'created "Untitled notebook" on Google\'s side. The tool detects this ' +
     "and returns a clear error so you can re-try against the correct URL.",
   inputSchema: {
     type: "object",
     properties: {
       type: {
         type: "string",
-        enum: ["url", "text"],
+        enum: ["url", "youtube", "text", "file"],
         description:
-          "`url` crawls the supplied website; `text` ingests `content` " +
-          "verbatim as a copied document.",
+          "`url` crawls a website, `youtube` imports a video transcript, `text` " +
+          "ingests `content` verbatim, `file` uploads `file_paths`.",
       },
       content: {
         type: "string",
         description:
-          "When `type=url`: a fully-qualified URL (https://…). " +
-          "When `type=text`: the raw text body (any length up to NotebookLM's per-source word limit, ~500 k for free tier).",
+          "When `type=url`/`youtube`: fully-qualified URL(s) (https://…), several " +
+          "separated by spaces or new lines. When `type=text`: the raw text body " +
+          "(up to NotebookLM's per-source word limit). Not used for `file`.",
+      },
+      file_paths: {
+        type: "array",
+        items: { type: "string" },
+        description: "`type=file` only: absolute paths of local files to upload.",
       },
       title: {
         type: "string",
@@ -78,7 +86,7 @@ export const addSourceTool: Tool = {
       },
       ...sharedNotebookTargeting,
     },
-    required: ["type", "content"],
+    required: ["type"],
   },
   annotations: {
     title: "Add source to notebook",
@@ -94,28 +102,57 @@ export const generateAudioTool: Tool = {
   description:
     "Trigger podcast-style Audio Overview generation for a notebook.\n\n" +
     "**Async by default** — returns immediately with one of:\n" +
-    "  • `status: \"started\"` — generation just kicked off\n" +
-    "  • `status: \"in_progress\"` — a generation was already running; " +
+    '  • `status: "started"` — generation just kicked off\n' +
+    '  • `status: "in_progress"` — a generation was already running; ' +
     "this call attached to it\n" +
-    "  • `status: \"ready\"` (with `alreadyExisted: true`) — an Audio " +
+    '  • `status: "ready"` (with `alreadyExisted: true`) — an Audio ' +
     "Overview already existed; nothing was triggered\n\n" +
     "Generation typically takes 2–10 minutes. **Workflow:**\n" +
     "  1. `generate_audio` → returns immediately\n" +
     "  2. Poll `get_audio_status` every ~30 s\n" +
     "  3. When status is `ready`, call `download_audio`\n\n" +
     "Pass `wait_for_completion: true` for legacy synchronous behaviour " +
-    "(blocks for up to `timeout_ms`). Audio Overview is the only Studio " +
-    "output exposed in v2.0 (Video / Mindmap / Quiz / Infographic / " +
-    "Datatable / Presentation are NotebookLM features but not yet wrapped).",
+    "(blocks for up to `timeout_ms`). Other Studio outputs (video, slides, " +
+    "mind map, report, flashcards, quiz, infographic, data table) are " +
+    "available via `generate_studio_artifact`.",
   inputSchema: {
     type: "object",
     properties: {
       custom_prompt: {
         type: "string",
         description:
-          "Optional focus prompt for the Audio Overview, e.g. \"Focus on the " +
-          "API authentication flow and skip pricing\". Passed into the " +
-          "NotebookLM \"Customize\" sub-dialog before generation starts.",
+          'Optional focus prompt for the Audio Overview, e.g. "Focus on the ' +
+          'API authentication flow and skip pricing". Passed into the ' +
+          'NotebookLM "Customize" sub-dialog before generation starts.',
+      },
+      format: {
+        type: "string",
+        enum: ["deep_dive", "brief", "critique", "debate"],
+        description:
+          "Optional episode format (2026-09 Studio dialog). `deep_dive` = two-host " +
+          "conversation (NotebookLM default), `brief` = bite-sized overview, " +
+          "`critique` = expert review of the sources, `debate` = two hosts debating.",
+      },
+      length: {
+        type: "string",
+        enum: ["short", "default", "long"],
+        description:
+          "Optional episode length. `long` is only offered on some accounts; " +
+          "when unavailable the NotebookLM default is kept.",
+      },
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Restrict the episode to these sources (title, unique title substring, or " +
+          "source id). Omit to use all sources.",
+      },
+      generate_later: {
+        type: "boolean",
+        description:
+          'Use NotebookLM\'s "Generate later" queue instead of "Generate now": ' +
+          "does not count against the current limit window, ready within hours. " +
+          "Default false.",
       },
       wait_for_completion: {
         type: "boolean",
@@ -178,7 +215,7 @@ export const downloadAudioTool: Tool = {
   name: "download_audio",
   description:
     "Save the completed Audio Overview to disk as a `.m4a` file. **Pre-" +
-    "condition:** `get_audio_status` must report `status: \"ready\"`. " +
+    'condition:** `get_audio_status` must report `status: "ready"`. ' +
     "Calling this before generation completes returns an error message " +
     "explaining what to do.\n\n" +
     "The file lands in `destination_dir` with NotebookLM's suggested " +

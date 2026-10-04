@@ -29,7 +29,18 @@
 
 import type { Page } from "patchright";
 import path from "path";
+import fs from "fs/promises";
 import { Selectors, joinAlt } from "./selectors.js";
+import { dismissPromoDialogs } from "./dialogs.js";
+import { ensureStudioListView } from "./notes.js";
+import { abortable, reportProgress } from "../utils/request-context.js";
+import {
+  fillFocusPrompt,
+  pickRadioValue,
+  pickToggle,
+  selectStudioSources,
+  submitStudioForm,
+} from "./studio.js";
 import { safeSleep, isRecoverable } from "../browser/watchdog.js";
 import { log } from "../utils/logger.js";
 
@@ -46,7 +57,29 @@ export interface GenerateAudioOptions {
   waitForCompletion?: boolean;
   /** How long to wait when `waitForCompletion=true`. Default 10 min. */
   timeoutMs?: number;
+  /** 2026-09 customise dialog: episode format. Default: NotebookLM's default (deep_dive). */
+  format?: AudioFormat;
+  /** 2026-09 customise dialog: episode length. Default: NotebookLM's default. */
+  length?: AudioLength;
+  /**
+   * Use "Generate later" instead of "Generate now": queued, does not count
+   * against the current limit window, ready within hours.
+   */
+  generateLater?: boolean;
+  /** Restrict the episode to these sources (title, unique substring, or id). */
+  sources?: string[];
 }
+
+export type AudioFormat = "deep_dive" | "brief" | "critique" | "debate";
+export type AudioLength = "short" | "default" | "long";
+
+/** `value` attribute of the format radio inputs — language-independent. */
+const AUDIO_FORMAT_VALUES: Record<AudioFormat, string> = {
+  deep_dive: "1",
+  brief: "2",
+  critique: "3",
+  debate: "4",
+};
 
 export interface AudioGenerationResult {
   status: AudioStatus | "started" | "error";
@@ -59,9 +92,20 @@ export async function generateAudioOverview(
   page: Page,
   options: GenerateAudioOptions = {}
 ): Promise<AudioGenerationResult> {
-  const { customPrompt, waitForCompletion = false, timeoutMs = 600_000 } = options;
+  const {
+    customPrompt,
+    waitForCompletion = false,
+    timeoutMs = 600_000,
+    format,
+    length,
+    generateLater = false,
+    sources,
+  } = options;
 
   try {
+    await dismissPromoDialogs(page);
+    await ensureStudioListView(page);
+
     // 1. Idempotency: if the completed audio tile is already mounted, the
     //    user already has an Audio Overview — report ready and do nothing.
     if (await audioIsReady(page)) {
@@ -90,7 +134,9 @@ export async function generateAudioOverview(
     await ensureStudioPanelExpanded(page);
 
     // 4. Trigger generation.
-    if (customPrompt) {
+    //    Legacy UI (≤2026-05) with a separate "customise" button: use it so
+    //    the tile click doesn't start an un-prompted generation first.
+    if (customPrompt && (await firstVisible(page, LEGACY_CUSTOMISE_SELECTORS))) {
       await openAudioCustomiseDialog(page);
       const overlay = page.locator(Selectors.sources.overlayPane).first();
       const promptField = overlay.locator("textarea, input[type='text']").first();
@@ -101,9 +147,38 @@ export async function generateAudioOverview(
       await clickFirstVisible(page, Selectors.studio.generateButton, "Generate button");
     } else {
       await clickFirstVisible(page, Selectors.studio.audioOverviewButton, "Audio overview entry");
+
+      // 2026-09 UI: the tile opens a customise dialog and nothing is
+      // generated until "Generate now" / "Generate later" is clicked.
+      // Older UIs started generating on the tile click itself.
+      const form = page.locator(Selectors.studio.customiseDialog).first();
+      if (await form.isVisible({ timeout: 5_000 }).catch(() => false)) {
+        if (sources) {
+          try {
+            await selectStudioSources(page, sources);
+          } catch (err) {
+            await page.keyboard.press("Escape").catch(() => undefined);
+            return { status: "error", message: err instanceof Error ? err.message : String(err) };
+          }
+        }
+        await fillAudioForm(page, { customPrompt, format, length });
+        const submitted = await submitStudioForm(page, generateLater);
+        if (!submitted.ok) {
+          return { status: "error", message: submitted.message };
+        }
+      }
     }
 
-    log.info("  🎙️  Audio Overview generation triggered");
+    log.info(`  🎙️  Audio Overview generation triggered${generateLater ? " (queued)" : ""}`);
+
+    if (generateLater) {
+      return {
+        status: "started",
+        message:
+          'Audio Overview queued via "Generate later" — it does not use the current ' +
+          "limit window and is usually ready within hours. Poll `get_audio_status`.",
+      };
+    }
 
     // 5. Either return immediately (default async mode) or block until ready.
     if (!waitForCompletion) {
@@ -128,7 +203,17 @@ export async function generateAudioOverview(
 
 async function waitForAudioReady(page: Page, timeoutMs: number): Promise<AudioGenerationResult> {
   const tile = page.locator(joinAlt(Selectors.studio.audioPlayer)).first();
-  await tile.waitFor({ state: "visible", timeout: timeoutMs });
+  // Minutes-long wait: report progress and stop when the client cancels.
+  const started = Date.now();
+  const ticker = setInterval(() => {
+    const min = Math.round((Date.now() - started) / 60_000);
+    void reportProgress(`Waiting for the Audio Overview (${min} min elapsed)…`);
+  }, 30_000);
+  try {
+    await abortable(tile.waitFor({ state: "visible", timeout: timeoutMs }));
+  } finally {
+    clearInterval(ticker);
+  }
   return { status: "ready" };
 }
 
@@ -176,6 +261,7 @@ const GENERATION_IN_PROGRESS_PHRASES = [
   // English
   "check back in a few minutes",
   "come back in a few minutes",
+  "generating audio overview",
   "audio overview is being generated",
   "generating your audio",
   // German
@@ -203,9 +289,19 @@ const GENERATION_IN_PROGRESS_PHRASES = [
 ];
 
 async function audioGenerationInProgress(page: Page): Promise<boolean> {
+  // 2026-09 UI: generating tile in the Studio library (language-free anchor).
+  if (
+    await page
+      .locator(joinAlt(Selectors.studio.audioGenerating))
+      .first()
+      .isVisible({ timeout: 500 })
+      .catch(() => false)
+  ) {
+    return true;
+  }
   try {
     const studioText = await page
-      .locator(".studio-panel")
+      .locator(".studio-panel, studio-panel")
       .first()
       .textContent({ timeout: 500 })
       .catch(() => null);
@@ -246,6 +342,50 @@ async function ensureStudioPanelExpanded(page: Page): Promise<void> {
     }
   }
 }
+
+async function fillAudioForm(
+  page: Page,
+  opts: { customPrompt?: string; format?: AudioFormat; length?: AudioLength }
+): Promise<void> {
+  if (opts.format && !(await pickRadioValue(page, AUDIO_FORMAT_VALUES[opts.format]))) {
+    log.warning(`  ⚠️  Audio format "${opts.format}" not found in dialog, using default`);
+  }
+  // The audio dialog has a single toggle group: Length (Short | Default [| Long]).
+  if (opts.length) {
+    const idx = opts.length === "short" ? 0 : opts.length === "default" ? 1 : 2;
+    if (!(await pickToggle(page, 0, idx))) {
+      log.warning(`  ⚠️  Audio length "${opts.length}" not offered, using default`);
+    }
+  }
+  if (opts.customPrompt && !(await fillFocusPrompt(page, opts.customPrompt))) {
+    log.warning("  ⚠️  Focus prompt field not found in Audio dialog");
+  }
+}
+
+async function firstVisible(page: Page, selectors: readonly string[]): Promise<boolean> {
+  for (const sel of selectors) {
+    if (
+      await page
+        .locator(sel)
+        .first()
+        .isVisible({ timeout: 300 })
+        .catch(() => false)
+    )
+      return true;
+  }
+  return false;
+}
+
+/** Pre-2026-09 "customise audio" buttons (separate from the tile itself). */
+const LEGACY_CUSTOMISE_SELECTORS = [
+  'button[aria-label*="audio-zusammenfassung anpassen" i]',
+  'button[aria-label*="audio" i][aria-label*="anpassen" i]',
+  'button[aria-label*="customise audio" i]',
+  'button[aria-label*="customize audio" i]',
+  'button[aria-label*="personnaliser" i][aria-label*="audio" i]',
+  'button[aria-label*="personalizar" i][aria-label*="audio" i]',
+  'button[aria-label*="personalizza" i][aria-label*="audio" i]',
+];
 
 async function openAudioCustomiseDialog(page: Page): Promise<void> {
   const customiseSelectors = [
@@ -289,23 +429,74 @@ export async function downloadAudioOverview(
     }
 
     // Open the three-dot menu on the audio tile.
+    await dismissPromoDialogs(page);
+    await ensureStudioListView(page);
     await clickFirstVisible(page, Selectors.studio.audioMoreMenuButton, "Audio more-menu button");
     await safeSleep(page, 250);
 
-    // Now race the download event against the menu-item click.
-    const downloadPromise = page.waitForEvent("download", { timeout: 60_000 });
-    await clickFirstVisible(
-      page,
-      Selectors.studio.audioDownloadMenuItem,
-      "Audio download menu item"
-    );
-    const download = await downloadPromise;
+    // 2026-09 UI: "Download" opens a popup that redirects to
+    // drum.usercontent.google.com and downloads *there* — and headless Chrome
+    // then tears down the whole persistent context. So: capture the popup's
+    // first URL, abort it before it downloads, and fetch the file with the
+    // context's own HTTP client (same cookies). Legacy UIs fire `download`
+    // on the page itself; race both.
+    const context = page.context();
+    let onPopup: ((p: Page) => Promise<void>) | null = null;
+    const popupUrl = new Promise<string>((resolve) => {
+      onPopup = async (popup: Page) => {
+        await popup
+          .route("**/*", async (route) => {
+            const req = route.request();
+            if (req.isNavigationRequest() && /^https:/.test(req.url())) {
+              resolve(req.url());
+              await route.abort().catch(() => undefined);
+              await popup.close().catch(() => undefined);
+              return;
+            }
+            await route.continue().catch(() => undefined);
+          })
+          .catch(() => undefined);
+      };
+      context.once("page", onPopup);
+    });
+    const pageDownload = page.waitForEvent("download", { timeout: 60_000 });
+    pageDownload.catch(() => undefined);
 
-    const suggested = download.suggestedFilename();
-    const targetPath = path.join(destinationDir, suggested || preferredFileName);
-    await download.saveAs(targetPath);
+    try {
+      await clickFirstVisible(
+        page,
+        Selectors.studio.audioDownloadMenuItem,
+        "Audio download menu item"
+      );
 
-    return { success: true, filePath: targetPath };
+      const winner = await Promise.race([
+        popupUrl.then((url) => ({ kind: "url" as const, url })),
+        pageDownload.then((download) => ({ kind: "download" as const, download })),
+      ]);
+
+      if (winner.kind === "download") {
+        const suggested = winner.download.suggestedFilename();
+        const targetPath = path.join(destinationDir, suggested || preferredFileName);
+        await winner.download.saveAs(targetPath);
+        return { success: true, filePath: targetPath };
+      }
+
+      const resp = await context.request.get(winner.url, { timeout: 180_000, maxRedirects: 10 });
+      if (!resp.ok()) {
+        return { success: false, message: `Audio download failed: HTTP ${resp.status()}` };
+      }
+      const body = await resp.body();
+      const fileName =
+        fileNameFromDisposition(resp.headers()["content-disposition"]) ??
+        preferredFileName.replace(/\.wav$/, ".m4a");
+      const targetPath = path.join(destinationDir, fileName);
+      await fs.mkdir(destinationDir, { recursive: true });
+      await fs.writeFile(targetPath, body);
+      log.success(`  ✅ Audio saved: ${targetPath} (${body.length} bytes)`);
+      return { success: true, filePath: targetPath };
+    } finally {
+      if (onPopup) context.off("page", onPopup);
+    }
   } catch (err) {
     if (isRecoverable(err)) throw err;
     log.warning(`  ⚠️  Audio download failed: ${err}`);
@@ -314,6 +505,31 @@ export async function downloadAudioOverview(
       message: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/**
+ * File name from a Content-Disposition header. Google sends raw UTF-8 bytes in
+ * `filename="…"`, which arrive latin1-decoded — re-decode them. Path
+ * separators are stripped so the name can't escape `destinationDir`.
+ */
+function fileNameFromDisposition(header: string | undefined): string | null {
+  if (!header) return null;
+  const star = header.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+  let name: string | null = null;
+  if (star) {
+    try {
+      name = decodeURIComponent(star[1].replace(/"/g, "").trim());
+    } catch {
+      name = null;
+    }
+  }
+  if (!name) {
+    const plain = header.match(/filename="?([^";]+)"?/i);
+    if (plain) name = Buffer.from(plain[1], "latin1").toString("utf8");
+  }
+  if (!name) return null;
+  const safe = path.basename(name.replace(/[\\/]/g, "_")).trim();
+  return safe || null;
 }
 
 async function clickFirstVisible(

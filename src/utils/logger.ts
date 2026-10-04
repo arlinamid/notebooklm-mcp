@@ -3,7 +3,7 @@
  * Similar to Python's rich.console
  */
 
-type LogLevel = "info" | "success" | "warning" | "error" | "debug" | "dim";
+export type LogLevel = "info" | "success" | "warning" | "error" | "debug" | "dim";
 
 interface LogStyle {
   prefix: string;
@@ -26,9 +26,16 @@ const RESET = "\x1b[0m";
  */
 export class Logger {
   private enabled: boolean;
+  /** Optional second destination (the MCP client via notifications/message). */
+  private sink?: (level: LogLevel, message: string) => void;
 
   constructor(enabled: boolean = true) {
     this.enabled = enabled;
+  }
+
+  /** Forward every log line to `sink` in addition to stderr. */
+  setSink(sink: ((level: LogLevel, message: string) => void) | undefined): void {
+    this.sink = sink;
   }
 
   /**
@@ -43,6 +50,13 @@ export class Logger {
 
     // Use stderr for logs to keep stdout clean for MCP JSON-RPC
     console.error(formattedMessage);
+    if (this.sink) {
+      try {
+        this.sink(level, message);
+      } catch {
+        /* a failing sink must never break logging */
+      }
+    }
   }
 
   /**

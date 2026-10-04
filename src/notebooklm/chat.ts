@@ -149,6 +149,8 @@ const RATE_LIMIT_MESSAGES = [
   "daily limit reached",
   "query limit reached",
   "rate limit exceeded",
+  "usage limit reached",
+  "reached your usage limit",
   // German
   "tägliches diskussionslimit",
   "tageslimit erreicht",
@@ -174,7 +176,10 @@ const RATE_LIMIT_MESSAGES = [
 
 function isPlaceholder(text: string): boolean {
   const lower = text.toLowerCase();
-  if (PLACEHOLDER_SNIPPETS.some((s) => lower.includes(s))) return true;
+  // Loading indicators are short status lines. Without the length cap any
+  // real answer that merely *contains* "loading", "searching", "thinking" …
+  // was treated as a placeholder forever and the call timed out.
+  if (text.length < 120 && PLACEHOLDER_SNIPPETS.some((s) => lower.includes(s))) return true;
   // Short text ending with "..." is almost certainly a loading indicator;
   // real responses run well past 50 chars.
   if (text.length < 50 && text.trim().endsWith("...")) return true;
@@ -210,11 +215,85 @@ export interface AskOptions {
  * the new turn isn't confused with prior turns in the same session.
  */
 export async function snapshotPriorAnswers(page: Page): Promise<string[]> {
-  return page
-    .locator(Selectors.chat.answerText)
-    .allInnerTexts()
-    .then((texts) => texts.map((t) => t.trim()).filter(Boolean))
-    .catch(() => []);
+  await waitForChatHistory(page);
+  const texts = await readAnswerTexts(page).catch(() => []);
+  return texts.map(sanitizeAnswer).filter(Boolean);
+}
+
+/**
+ * Wait until the chat history has finished rendering. Right after the
+ * notebook page loads the history is not in the DOM yet (0 turns) and then
+ * streams in; acting before it settles saved the wrong answer as a note and
+ * could let an old answer look "new" to the stability detector. Settled =
+ * the turn count is unchanged for `stableMs` (an empty chat settles at 0).
+ */
+export async function waitForChatHistory(
+  page: Page,
+  { stableMs = 1_500, timeoutMs = 12_000 }: { stableMs?: number; timeoutMs?: number } = {}
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  let last = -1;
+  let stableSince = Date.now();
+  while (Date.now() < deadline) {
+    const n = await page
+      .locator(Selectors.chat.turn)
+      .count()
+      .catch(() => 0);
+    if (n !== last) {
+      last = n;
+      stableSince = Date.now();
+    } else if (Date.now() - stableSince >= stableMs) {
+      return n;
+    }
+    await safeSleep(page, 300);
+  }
+  return Math.max(last, 0);
+}
+
+/**
+ * innerText of every answer bubble, minus the collapsible reasoning block.
+ *
+ * Since the 2026-09 UI, each answer starts with a `<thinking-chain-view>`
+ * ("Thoughts" + `expand_more`, plus streamed reasoning steps while the model
+ * works). It is not part of the answer, and while it streams it can look
+ * "stable" long enough to be returned as the final answer — so strip it and
+ * report an empty string until real answer content shows up.
+ */
+async function readAnswerTexts(page: Page): Promise<string[]> {
+  return page.locator(Selectors.chat.answerText).evaluateAll(
+    (nodes, { thinkingSel, markerSel }) => {
+      // Citation markers (`button.citation-marker`) render as separate lines
+      // in innerText ("father\n1\n2\n."). Swap each for an inline "[N]" — the
+      // form `formatAnswer` expects — and hide the reasoning block, read
+      // innerText, then restore. All synchronous, so nothing is ever painted.
+      return nodes.map((node) => {
+        const el = node as HTMLElement;
+        const hidden: Array<[HTMLElement, string]> = [];
+        const inserted: Text[] = [];
+        const hide = (h: HTMLElement) => {
+          hidden.push([h, h.style.display]);
+          h.style.display = "none";
+        };
+        try {
+          el.querySelectorAll<HTMLElement>(thinkingSel).forEach(hide);
+          el.querySelectorAll<HTMLElement>(markerSel).forEach((m) => {
+            const num = (m.textContent ?? "").trim();
+            if (/^\d+$/.test(num)) {
+              const t = document.createTextNode(`[${num}]`);
+              m.parentNode?.insertBefore(t, m);
+              inserted.push(t);
+            }
+            hide(m);
+          });
+          return (el.innerText ?? "").trim();
+        } finally {
+          inserted.forEach((t) => t.remove());
+          hidden.forEach(([h, display]) => (h.style.display = display));
+        }
+      });
+    },
+    { thinkingSel: Selectors.chat.thinkingBlock, markerSel: Selectors.citations.button.join(", ") }
+  );
 }
 
 /**
@@ -305,14 +384,13 @@ export async function waitForStableAnswer(
 
 /**
  * Read the latest answer container's text and strip UI-control leakage.
- * Uses `:last-child` so we always target the most recent turn.
+ * Uses the last answer bubble so we always target the most recent turn.
  */
 async function readLatestAnswer(page: Page): Promise<string | null> {
   try {
-    const raw = await page
-      .locator(Selectors.chat.latestAnswerText)
-      .last()
-      .innerText({ timeout: 2_000 });
+    const texts = await readAnswerTexts(page);
+    const raw = texts[texts.length - 1];
+    if (!raw) return null;
     const cleaned = sanitizeAnswer(raw);
     return cleaned.length > 0 ? cleaned : null;
   } catch {
@@ -346,7 +424,12 @@ export function sanitizeAnswer(text: string): string {
     const nextIsControl = Selectors.uiControlLabels.has(next);
     const prevIsControl = Selectors.uiControlLabels.has(prev);
     if (/^\d+$/.test(line) && nextIsControl) continue;
-    if (/^[.,;:!?]+$/.test(line) && (nextIsControl || prevIsControl)) continue;
+    // Punctuation split off by a citation marker ("…predator", "1",
+    // "more_horiz", ".") belongs to the preceding sentence — re-attach it.
+    if (/^[.,;:!?]+$/.test(line) && (nextIsControl || prevIsControl)) {
+      if (kept.length > 0) kept[kept.length - 1] += line;
+      continue;
+    }
 
     kept.push(line);
   }
@@ -354,5 +437,6 @@ export function sanitizeAnswer(text: string): string {
   return kept
     .join("\n")
     .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/(\S)\[(\d+)\]/g, "$1 [$2]")
     .trim();
 }

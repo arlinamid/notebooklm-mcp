@@ -1,0 +1,260 @@
+{
+ "pack": {
+  "id": "learner-pack",
+  "name": "NotebookLM Learner Pack",
+  "repo": "https://github.com/DrMultivac/notebooklm-learner-pack",
+  "commit": "cf9b5e7a68a8105ac419f3915333a95e4e652d66",
+  "license": "MIT",
+  "copyright": "Copyright (c) 2026 Christian Pean",
+  "defaultLens": "operator"
+ },
+ "slots": [
+  {
+   "id": "IG-01",
+   "title": "Side-by-Side Comparison",
+   "asset": "infographic",
+   "body": "**Pattern:** Two-column split-panel comparing two major entities, frameworks, or states from the source.\n**Grounding:** Name both entities explicitly. List the 5-7 most operationally consequential parameters to compare.",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-02",
+   "title": "Hub-and-Spoke Network",
+   "asset": "infographic",
+   "body": "**Pattern:** Central concept with 6-10 connected spokes.\n**Grounding:** Name the hub. Enumerate the actual spoke entities (stakeholders, components, dependencies) from the source. Specify the relationship/flow labels.",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-03",
+   "title": "Timeline / Evolution",
+   "asset": "infographic",
+   "body": "**Pattern:** Horizontal timeline, 5-8 nodes.\n**Grounding:** Extract the actual milestone dates and events from the source. Each node: date + title + one-line significance.",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-04",
+   "title": "Step-by-Step Process",
+   "asset": "infographic",
+   "body": "**Pattern:** Vertical pipeline or waterfall, 4-7 steps.\n**Grounding:** Name the specific process (e.g., target price construction, reconciliation workflow, clinical pathway). Specify the inputs, intermediate steps, and output.",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-05",
+   "title": "Decision Tree / Eligibility Flow",
+   "asset": "infographic",
+   "body": "**Pattern:** Branching logic with terminal outcomes.\n**Grounding:** State the entry question. Enumerate the actual branching criteria from the source. Label terminal nodes (IN / OUT / exception categories).",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-06",
+   "title": "Anatomy Breakdown",
+   "asset": "infographic",
+   "body": "**Pattern:** Decompose one complex entity into its components.\n**Grounding:** Name the entity. Enumerate its components, what's included vs. excluded, and any boundary conditions (outlier caps, cancellation triggers).",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-07",
+   "title": "Tiered Hierarchy",
+   "asset": "infographic",
+   "body": "**Pattern:** 3-5 stacked tiers multiplying into an outcome.\n**Grounding:** Name the framework. Enumerate each tier's actual members/variables. Show how tiers combine.",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-08",
+   "title": "Metrics Dashboard",
+   "asset": "infographic",
+   "body": "**Pattern:** 6-10 stat cards with numbers, labels, and what they trigger.\n**Grounding:** Extract the actual numerical parameters from the source — percentages, thresholds, caps, volumes, dollar amounts.",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-09",
+   "title": "Three-Panel Card Set",
+   "asset": "infographic",
+   "body": "**Pattern:** Three parallel items with parallel structure.\n**Grounding:** Identify three structurally parallel entities in the source (three waivers, three pathways, three programs, three stakeholder groups). Each card: title + 3-4 lines of specific detail + tags.",
+   "target": "infographic"
+  },
+  {
+   "id": "IG-10",
+   "title": "Risk / Equity Bars",
+   "asset": "infographic",
+   "body": "**Pattern:** Tier-based spectrum bars with qualifier lists.\n**Grounding:** Identify a tiered protection, risk corridor, or qualification spectrum. State the actual percentages/thresholds. List who qualifies for each tier. Surface the equity question the design raises.",
+   "target": "infographic"
+  },
+  {
+   "id": "SD-01",
+   "title": "Executive Summary Deck (5–7 slides)",
+   "asset": "deck",
+   "body": "**Audience:** C-suite, board.\n**Arc:** What this is → who it affects → key parameters → financial implications → risks → actions → timeline.",
+   "target": "slide_deck"
+  },
+  {
+   "id": "SD-02",
+   "title": "Teaching Deck (10–12 slides)",
+   "asset": "deck",
+   "body": "**Audience:** Grand rounds, CME, internal education.\n**Arc:** Learning objectives → background → core concepts → worked example → implications → take-home points → references + discussion questions.",
+   "target": "slide_deck"
+  },
+  {
+   "id": "SD-03",
+   "title": "Conference Talk Deck (15–20 slides)",
+   "asset": "deck",
+   "body": "**Audience:** Peers at AAOS, AOA, Health Affairs.\n**Arc:** Hook → background → design → evidence → data → implications → open questions → call to action. Assume 20 min + 5 min Q&A.",
+   "target": "slide_deck"
+  },
+  {
+   "id": "SD-04",
+   "title": "Strategic / Investor Deck (8–10 slides)",
+   "asset": "deck",
+   "body": "**Audience:** Business stakeholders, investors.\n**Arc:** Market shift → why now → winners/losers → business implication → build/buy/partner → action framework → timeline. Peer-to-peer strategic tone, no sales energy.",
+   "target": "slide_deck"
+  },
+  {
+   "id": "SD-05",
+   "title": "Operational Playbook Deck (8–10 slides)",
+   "asset": "deck",
+   "body": "**Audience:** Service line leaders, operators.\n**Arc:** What changed → what operators must know → workflow implications → metrics to track → roles → risks/mitigations → 30/60/90-day actions.",
+   "target": "slide_deck"
+  },
+  {
+   "id": "AU-01",
+   "title": "Rapid Brief (5–7 min)",
+   "asset": "audio",
+   "body": "For the commute or between meetings. 3-4 most consequential takeaways + action implication.",
+   "target": "audio"
+  },
+  {
+   "id": "AU-02",
+   "title": "Standard Overview (12–15 min)",
+   "asset": "audio",
+   "body": "Default format. Structure: what it is → who it affects → core mechanics → key parameters → implications → open questions.",
+   "target": "audio"
+  },
+  {
+   "id": "AU-03",
+   "title": "Deep-Dive Expert Conversation (25–30 min)",
+   "asset": "audio",
+   "body": "For technical/peer audiences. Methodology, design choices, edge cases, equity implications, counterarguments, unresolved calibration questions.",
+   "target": "audio"
+  },
+  {
+   "id": "AU-04",
+   "title": "Debate / Two Perspectives (10–12 min)",
+   "asset": "audio",
+   "body": "Two voices: a proponent and a thoughtful skeptic. Each takes the strongest case on 3-4 contested design choices. End with synthesis.",
+   "target": "audio"
+  },
+  {
+   "id": "AU-05",
+   "title": "Case Study / Narrative (15–20 min)",
+   "asset": "audio",
+   "body": "Story-driven. One concrete scenario (a specific hospital, patient pathway, deployment, service line) walked through end-to-end.",
+   "target": "audio"
+  },
+  {
+   "id": "VD-01",
+   "title": "Short Social Explainer (60–90 sec)",
+   "asset": "video",
+   "body": "6-8 scenes. LinkedIn/Twitter vertical. Hook with operational stakes; end with \"what to watch next.\"",
+   "target": "video"
+  },
+  {
+   "id": "VD-02",
+   "title": "Mid-Length Explainer (3–5 min)",
+   "asset": "video",
+   "body": "12-18 scenes. YouTube/LinkedIn long-form. Talking-head cut with b-roll, charts, animation overlays.",
+   "target": "video"
+  },
+  {
+   "id": "VD-03",
+   "title": "Scenario / Story Video (2–3 min)",
+   "asset": "video",
+   "body": "8-12 scenes. Built around one concrete scenario that humanizes the material.",
+   "target": "video"
+  },
+  {
+   "id": "VD-04",
+   "title": "Demo / Walk-Through (5–8 min)",
+   "asset": "video",
+   "body": "20-28 scenes. Step-by-step walk-through with one worked example and a summary of viewer decisions.",
+   "target": "video"
+  },
+  {
+   "id": "QZ-01",
+   "title": "Terminology Flashcards",
+   "asset": "quiz",
+   "body": "**Pattern:** Front-of-card term, back-of-card precise definition, plus one example or implication line.\n**Grounding:** Identify 12-15 vocabulary terms from the source that block comprehension. Prioritize terms learners commonly conflate (e.g., for CJR-X: gainsharing vs. alignment, MS-DRG vs. HCPCS triggers, CJR vs. CJR-X parameters).\n**NotebookLM target:** Flashcards.",
+   "target": "flashcards"
+  },
+  {
+   "id": "QZ-02",
+   "title": "Scenario Decision Flashcards",
+   "asset": "quiz",
+   "body": "**Pattern:** Front-of-card concrete situation in 2-3 sentences, back-of-card answer + one-line citation.\n**Grounding:** Generate 10-12 scenario cards drawn from real operational decisions the source enables (placement decisions, eligibility questions, cancellation triggers, concurrent-program participation, beneficiary incentives).\n**NotebookLM target:** Flashcards.",
+   "target": "flashcards"
+  },
+  {
+   "id": "QZ-03",
+   "title": "Common-Mistake Quiz",
+   "asset": "quiz",
+   "body": "**Pattern:** Multiple choice with 4 options, one correct, plus one-paragraph explanation citing the rule.\n**Grounding:** Generate 8-10 questions targeting common misconceptions about the topic. Each tempting wrong answer should reflect a real misread the source corrects (e.g., conflating CJR's 3% discount with CJR-X's 2%, missing TEAM overlap rules, assuming ASCs are included).\n**NotebookLM target:** Quiz.",
+   "target": "quiz"
+  },
+  {
+   "id": "QZ-04",
+   "title": "Integration Quiz",
+   "asset": "quiz",
+   "body": "**Pattern:** Multiple choice with 4 options, one correct, one-paragraph explanation showing how the concepts interconnect.\n**Grounding:** Generate 8-10 questions that require combining 2-3 concepts from the source to answer correctly (e.g., target price + risk adjustment + reconciliation; quality scoring + discount factor + reconciliation eligibility; episode definition + concurrent ACO participation + savings retention).\n**NotebookLM target:** Quiz.",
+   "target": "quiz"
+  },
+  {
+   "id": "QZ-05",
+   "title": "Tradeoff Quiz",
+   "asset": "quiz",
+   "body": "**Pattern:** Multiple choice with 4 options, the answer that best matches the stated priority, plus one-paragraph explanation of all tradeoffs.\n**Grounding:** Generate 6-8 questions presenting real strategic decisions where each option has valid pros and cons (post-acute network composition, beneficiary engagement allocation, gainsharing structure with PGP vs. ACO collaborators, telehealth waiver vs. in-person follow-up). The \"correct\" answer depends on stated priorities.\n**NotebookLM target:** Quiz.",
+   "target": "quiz"
+  }
+ ],
+ "lenses": {
+  "eli5": {
+   "general": "Explain as if to a curious fifth grader or complete outsider. Use plain everyday language and concrete analogies (recipes, schools, neighborhoods, sports). Avoid jargon; when a technical term must appear, add a brief plain-English explanation in parentheses. Short sentences. Focus on the 'what' and 'why it matters,' not the technical 'how.'",
+   "deck": "Explain as if to a curious fifth grader. First slide defines the topic in one plain sentence. Use a concrete analogy on every slide. No jargon without immediate plain-English paraphrase.",
+   "audio": "Explain as if to a curious fifth grader. Conversational, plain language. Concrete analogies throughout. Assume the listener knows nothing about healthcare policy or medicine.",
+   "video": "Explain as if to a curious fifth grader. Plain language, visual analogies (a ball game, a recipe, a neighborhood). Each scene should land one simple idea.",
+   "quiz": "Explain as if to a curious fifth grader. Use plain everyday vocabulary in both the questions and the answer choices. Wrong answers should be obviously wrong rather than tricky. Explanations should use simple analogies."
+  },
+  "newbie": {
+   "general": "Assume the reader is a new analyst or early-career professional unfamiliar with this specific domain but comfortable with healthcare generally. Define technical terms on first use. Use plain language, but retain real vocabulary where it's load-bearing.",
+   "deck": "Assume the audience is new to the domain. First slide defines core vocabulary. Use analogies to anchor unfamiliar concepts.",
+   "audio": "Assume the listener is new to this policy area. Start with a clear definition of the central construct. Explain each technical term the first time it appears.",
+   "video": "Assume the viewer has never encountered this topic. Open with the simplest version of what it is and why it exists. Keep language plain but professional.",
+   "quiz": "Assume the test-taker is new to the domain. Define technical terms inside the questions when needed. Wrong answers should reflect common beginner confusions. Explanations should fill in the foundational context."
+  },
+  "clinical": {
+   "general": "Emphasize clinical workflow, patient impact, and care delivery — what changes at the bedside, in the OR, in the post-op course. Highlight case selection, quality measure implications, complication management, and discharge planning.",
+   "deck": "Frame for clinicians. Emphasize care pathways, case selection, quality measures, and complication management. Include a workflow diagram slide.",
+   "audio": "Frame for clinicians. Emphasize care pathway implications, clinical quality measures, and what care teams do differently.",
+   "video": "Frame for clinicians. Show clinical workflows and care team decisions. Use the OR, clinic, and post-op home as anchoring settings.",
+   "quiz": "Frame for clinicians. Test scenarios should arise from clinical workflow, case selection, complication management, and quality measure performance. Wrong answers should reflect plausible but incorrect clinical decisions."
+  },
+  "operator": {
+   "general": "Emphasize operational implications — service line design, staffing, post-acute network, metrics to track, and the 30/60/90-day actions operators should take now.",
+   "deck": "Frame for service line leaders and COOs. Emphasize operational readiness, staffing, infrastructure, metrics dashboards, and 30/60/90-day actions.",
+   "audio": "Frame for service line leaders. Emphasize operational decisions, infrastructure, post-acute network design, and preparation timelines.",
+   "video": "Frame for service line leaders and operations teams. Show operational workflows, dashboards, and decision points.",
+   "quiz": "Frame for service line leaders. Test scenarios should arise from operational decisions: service line design, post-acute network configuration, staffing, metric thresholds, and 30/60/90-day actions. Wrong answers should reflect common operator misreads of the source."
+  },
+  "finance": {
+   "general": "Emphasize financial mechanics — target price construction, discount factor, stop-loss/stop-gain corridors, reconciliation cadence, concurrent-program savings retention, and margin impact. Quantify where the source permits.",
+   "deck": "Frame for CFOs and VBC finance leaders. Emphasize target price mechanics, reconciliation cadence, discount factors, stop-loss corridors, and margin exposure. Include a quantitative slide.",
+   "audio": "Frame for VBC finance leaders. Emphasize target price construction, reconciliation mechanics, discount factors, and financial exposure. Quantify where the source allows.",
+   "video": "Frame for finance leaders. Show financial flows, target price calculations, and margin implications. Use numbers where the source permits.",
+   "quiz": "Frame for VBC finance leaders. Test scenarios should arise from target price mechanics, reconciliation outcomes, gainsharing/alignment structures, stop-loss exposure, and concurrent-program savings retention. Quantify where the source allows. Wrong answers should be plausible margin or mechanics misreads."
+  },
+  "deep_dive": {
+   "general": "Apply rigorous analytical treatment — design rationale, evidence base for parameter choices, edge cases, counterarguments, equity implications, and unresolved calibration questions. Senior-peer register.",
+   "deck": "Senior-peer register. Include slides on design rationale, evidence base, edge cases and counterarguments, and open calibration questions.",
+   "audio": "Senior-peer register. Surface design rationale, evidence base, edge cases, counterarguments, and unresolved calibration questions. Assume a sophisticated listener.",
+   "video": "Senior-peer register. Surface design trade-offs, evidence base, edge cases, and open questions. Assume a sophisticated viewer.",
+   "quiz": "Senior-peer register. Test items should require integrating multiple concepts, surface design rationale, edge cases, equity implications, and unresolved calibration questions. Wrong answers should be sophisticated near-misses, not naive errors. Multiple correct interpretations are acceptable when the source supports them."
+  }
+ }
+}

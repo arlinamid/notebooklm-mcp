@@ -3,18 +3,24 @@
  */
 
 /**
+ * Default message for an exhausted usage limit. Since the 2026-09 "Gemini
+ * Notebook" rebrand, usage is metered (a rolling window that resets every few
+ * hours plus a weekly limit) instead of a fixed 50 queries/day.
+ */
+export const RATE_LIMIT_MESSAGE =
+  "NotebookLM usage limit reached (rolling window resets every few hours; " +
+  "there is also a weekly limit — call `get_usage` for exact reset times)";
+
+/**
  * Error thrown when NotebookLM rate limit is exceeded
  *
- * Free users have 50 queries/day limit.
  * This error indicates the user should:
+ * - Check `get_usage` for the reset time and wait
  * - Use re_auth tool to switch Google accounts
- * - Wait until tomorrow for quota reset
  * - Upgrade to Google AI Pro/Ultra for higher limits
  */
 export class RateLimitError extends Error {
-  constructor(
-    message: string = "NotebookLM rate limit reached (50 queries/day for free accounts)"
-  ) {
+  constructor(message: string = RATE_LIMIT_MESSAGE) {
     super(message);
     this.name = "RateLimitError";
 

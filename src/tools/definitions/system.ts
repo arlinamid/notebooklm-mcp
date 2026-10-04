@@ -82,7 +82,7 @@ export const systemTools: Tool[] = [
       "Closes all active sessions, deletes saved cookies and Chrome profile, " +
       "and opens a fresh login browser.\n\n" +
       "Common triggers:\n" +
-      "  • NotebookLM's 50 queries/day free-tier limit is reached and the " +
+      "  • NotebookLM's usage limit is reached (see `get_usage`) and the " +
       "user wants to rotate to another Google account\n" +
       "  • `setup_auth` failed and a clean slate is needed\n\n" +
       "After login, call `get_health` to verify. For very stuck states, run " +

@@ -57,6 +57,8 @@ export interface AskQuestionResult {
    * requested (or the default `none`) so downstream tools can adapt.
    */
   source_format?: "none" | "inline" | "footnotes" | "json";
+  /** Source titles the answer was restricted to (when `sources` was given). */
+  scoped_sources?: string[];
 }
 
 /**

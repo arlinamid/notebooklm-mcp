@@ -1,12 +1,13 @@
 /**
  * NotebookLM source ingestion (issue #25).
  *
- * v2.0.0 supports the two source types that cover the bulk of real usage:
- *   - `url`  — paste a website URL (NotebookLM crawls and indexes it)
- *   - `text` — paste raw text (treated as a copied document)
+ * Supported source types:
+ *   - `url` / `youtube` — website or YouTube URL(s), crawled by NotebookLM
+ *   - `text` — pasted raw text (treated as a copied document)
+ *   - `file` — local files via the dialog's native file chooser
  *
- * File-upload, YouTube and Google-Drive ingestion are intentionally out of
- * scope for v2.0.0 — they require different overlay flows.
+ * Google Drive and Play Books imports are not supported (they open Google's
+ * own pickers).
  *
  * Robustness strategy (2026-05, ported from the Fork's content-manager.ts):
  *
@@ -28,18 +29,30 @@
  */
 
 import type { Page } from "patchright";
+import path from "path";
+import fs from "fs/promises";
 import { Selectors, joinAlt } from "./selectors.js";
+import { dismissPromoDialogs } from "./dialogs.js";
+import { reportProgress } from "../utils/request-context.js";
 import { safeSleep, isRecoverable } from "../browser/watchdog.js";
 import { log } from "../utils/logger.js";
 
-export type SourceType = "url" | "text";
+/**
+ * `youtube` uses the same "Website and YouTube URLs" field as `url`; several
+ * URLs may be given separated by spaces or new lines. `file` uploads local
+ * files through the dialog's native file chooser (pdf, text, markdown, docs,
+ * audio, images …) — added 2026-10.
+ */
+export type SourceType = "url" | "text" | "youtube" | "file";
 
 export interface AddSourceInput {
   type: SourceType;
-  /** URL when `type === "url"`, raw text when `type === "text"`. */
+  /** URL(s) for `url` / `youtube`, raw text for `text`; unused for `file`. */
   content: string;
   /** Optional title shown in the source list. NotebookLM uses a default if omitted. */
   title?: string;
+  /** Absolute local paths for `type: "file"`. */
+  filePaths?: string[];
 }
 
 export interface AddSourceResult {
@@ -54,10 +67,26 @@ export async function addSource(page: Page, input: AddSourceInput): Promise<AddS
   const initialUrl = page.url();
   const expectedUuid = initialUrl.match(/notebook\/([a-f0-9-]+)/)?.[1];
   log.info(`📄 [add_source] type=${input.type} target_uuid=${expectedUuid ?? "?"}`);
+  if (input.type !== "file" && !input.content.trim()) {
+    return {
+      success: false,
+      type: input.type,
+      sourceCountBefore: 0,
+      sourceCountAfter: 0,
+      message: `\`content\` is required for type "${input.type}".`,
+    };
+  }
 
   try {
+    // 0. Announcement modals block clicks and look like the Add-source dialog.
+    await dismissPromoDialogs(page);
+
     // 1. Open the Add-source dialog (or use one that's already open).
     await openAddSourceOverlay(page);
+
+    if (input.type === "file") {
+      return await uploadFiles(page, input.filePaths ?? []);
+    }
 
     // 2. Pick the source type if there is a picker. Some overlay variants
     //    drop straight into an input field; pickSourceType is a no-op then.
@@ -86,9 +115,7 @@ export async function addSource(page: Page, input: AddSourceInput): Promise<AddS
       const currentUrl = page.url();
       const currentUuid = currentUrl.match(/notebook\/([a-f0-9-]+)/)?.[1];
       if (currentUuid && currentUuid !== expectedUuid) {
-        log.error(
-          `  ❌ Notebook redirect: expected ${expectedUuid}, got ${currentUuid}`
-        );
+        log.error(`  ❌ Notebook redirect: expected ${expectedUuid}, got ${currentUuid}`);
         return {
           success: false,
           type: input.type,
@@ -193,17 +220,16 @@ async function openAddSourceOverlay(page: Page): Promise<void> {
 
   // Try the sidebar button first — fastest path on a populated notebook.
   try {
-    await page
-      .locator(joinAlt(Selectors.sources.addButton))
-      .first()
-      .click({ timeout: 5_000 });
+    await page.locator(joinAlt(Selectors.sources.addButton)).first().click({ timeout: 5_000 });
     await page
       .locator(Selectors.sources.overlayPane)
       .first()
       .waitFor({ state: "visible", timeout: 8_000 });
     return;
   } catch (err) {
-    log.warning(`  ⚠️  Add-source button click failed (${err}), trying ?addSource=true URL fallback`);
+    log.warning(
+      `  ⚠️  Add-source button click failed (${err}), trying ?addSource=true URL fallback`
+    );
   }
 
   // URL fallback — useful when the sidebar button is hidden or covered.
@@ -230,9 +256,70 @@ async function isOverlayVisible(page: Page): Promise<boolean> {
     .catch(() => false);
 }
 
+/**
+ * "Upload files": the button opens a native file chooser (no `<input>` is
+ * mounted beforehand). The dialog closes by itself after the selection and
+ * each file becomes one source.
+ */
+async function uploadFiles(page: Page, filePaths: string[]): Promise<AddSourceResult> {
+  if (filePaths.length === 0) throw new Error('`file_paths` is required for type "file".');
+  for (const p of filePaths) {
+    if (!path.isAbsolute(p)) throw new Error(`File path must be absolute: ${p}`);
+    await fs.access(p).catch(() => {
+      throw new Error(`File not found: ${p}`);
+    });
+  }
+  const before = await countSources(page);
+  const overlay = page.locator(Selectors.sources.overlayPane).first();
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: 10_000 });
+  await overlay
+    .locator(joinAlt(Selectors.sources.sourceTypeFile.filter((s) => !s.startsWith("input"))))
+    .first()
+    .click();
+  const chooser = await chooserPromise;
+  if (filePaths.length > 1 && !chooser.isMultiple()) {
+    throw new Error("This upload dialog accepts one file at a time — call add_source per file.");
+  }
+  await chooser.setFiles(filePaths);
+  await reportProgress(`Uploading ${filePaths.length} file(s)…`, 1, filePaths.length + 1);
+  await waitForOverlayToClose(page);
+  // Uploads are processed server-side; give them longer than URL crawls.
+  const deadline = Date.now() + 180_000;
+  let after = await countSources(page);
+  let reported = after;
+  while (after < before + filePaths.length && Date.now() < deadline) {
+    await safeSleep(page, 1_000);
+    after = await countSources(page);
+    if (after !== reported) {
+      reported = after;
+      await reportProgress(
+        `${after - before} of ${filePaths.length} file(s) processed`,
+        1 + (after - before),
+        filePaths.length + 1
+      );
+    }
+  }
+  const ok = after >= before + filePaths.length;
+  return {
+    success: ok,
+    type: "file",
+    sourceCountBefore: before,
+    sourceCountAfter: after,
+    ...(ok
+      ? {}
+      : {
+          message:
+            `Uploaded ${filePaths.length} file(s) but the source list grew by ${after - before} ` +
+            "within 180 s — processing may still be running, or a file type was rejected.",
+        }),
+  };
+}
+
 async function pickSourceType(page: Page, type: SourceType): Promise<void> {
   const candidates =
-    type === "url" ? Selectors.sources.sourceTypeUrl : Selectors.sources.sourceTypeText;
+    type === "url" || type === "youtube"
+      ? Selectors.sources.sourceTypeUrl
+      : Selectors.sources.sourceTypeText;
   const overlay = page.locator(Selectors.sources.overlayPane).first();
   for (const sel of candidates) {
     const target = overlay.locator(sel).first();
@@ -244,6 +331,20 @@ async function pickSourceType(page: Page, type: SourceType): Promise<void> {
     }
   }
   // Older overlays drop straight to the input (no type picker) — that's fine.
+  // But if a picker *is* showing and none of our candidates matched, typing
+  // now would land in the dialog's web-source search box and kick off a web
+  // search instead of adding the source. Bail out instead.
+  const pickerVisible = await overlay
+    .locator("button:is(.source-action-button, .drop-zone-icon-button)")
+    .first()
+    .isVisible({ timeout: 500 })
+    .catch(() => false);
+  if (pickerVisible) {
+    throw new Error(
+      `Could not find the "${type}" source-type button in the Add-source dialog. ` +
+        "NotebookLM UI may have changed."
+    );
+  }
 }
 
 async function fillSourceContent(page: Page, input: AddSourceInput): Promise<void> {
@@ -334,7 +435,7 @@ async function waitForOverlayToClose(page: Page, timeoutMs: number = 30_000): Pr
     .catch(() => undefined);
 }
 
-async function waitForSourceCountIncrease(
+export async function waitForSourceCountIncrease(
   page: Page,
   before: number,
   timeoutMs: number = 90_000
