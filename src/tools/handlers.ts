@@ -26,6 +26,12 @@ import type { UsageInfo } from "../notebooklm/usage.js";
 import type { ConvertResult, SavedNote } from "../notebooklm/notes.js";
 import type { NotebookSource } from "../notebooklm/source-select.js";
 import type { DeleteResult, DeleteTarget } from "../notebooklm/deletion.js";
+import {
+  listAccountNotebooks,
+  notebookUuidFromUrl,
+  type AccountNotebook,
+  type AccountNotebookScope,
+} from "../notebooklm/account-notebooks.js";
 
 /**
  * Asks the human user to approve an action (MCP elicitation). Resolves to
@@ -63,6 +69,31 @@ function parseMetadataJson(text: string | null): Omit<GeneratedMetadata, "from">
   } catch {
     return null;
   }
+}
+
+/** One notebook in an import_account_notebooks result. */
+export interface ImportedNotebookItem {
+  status: "imported" | "would_import" | "already_in_library";
+  /** Library id (null for would_import). */
+  library_id: string | null;
+  name: string;
+  uuid: string;
+  url: string;
+  sources: number | null;
+  created_at: string | null;
+  scope: AccountNotebookScope;
+}
+
+export interface ImportAccountNotebooksResult {
+  dry_run: boolean;
+  scope: "mine" | "shared" | "all";
+  found: number;
+  matched: number;
+  imported: number;
+  already_in_library: number;
+  active_notebook_id: string | null;
+  notebooks: ImportedNotebookItem[];
+  next_step?: string;
 }
 
 /** Common notebook-targeting arguments shared by the session-backed tools. */
@@ -770,6 +801,100 @@ export class ToolHandlers {
       use_cases: [],
       from: "source_titles",
     };
+  }
+
+  /**
+   * Handle import_account_notebooks — copy the signed-in account's notebooks
+   * (NotebookLM homepage) into the local library, skipping ones already there.
+   */
+  async handleImportAccountNotebooks(args: {
+    scope?: "mine" | "shared" | "all";
+    query?: string;
+    notebook_ids?: string[];
+    dry_run?: boolean;
+  }): Promise<ToolResult<ImportAccountNotebooksResult>> {
+    const scope = args.scope ?? "mine";
+    const dryRun = args.dry_run ?? false;
+    log.info(`🔧 [TOOL] import_account_notebooks called (scope=${scope}, dry_run=${dryRun})`);
+
+    try {
+      const scopes: AccountNotebookScope[] = scope === "all" ? ["mine", "shared"] : [scope];
+      const found = await this.sessionManager.withScratchPage((page) =>
+        listAccountNotebooks(page, scopes)
+      );
+
+      const query = args.query?.trim().toLowerCase();
+      const wanted = args.notebook_ids?.length
+        ? new Set(args.notebook_ids.map((v) => notebookUuidFromUrl(v) ?? v.trim().toLowerCase()))
+        : null;
+      const selected = found.filter(
+        (nb) =>
+          (!query || nb.title.toLowerCase().includes(query)) && (!wanted || wanted.has(nb.uuid))
+      );
+
+      const items: ImportedNotebookItem[] = [];
+      const toAdd: { nb: AccountNotebook; item: ImportedNotebookItem }[] = [];
+      for (const nb of selected) {
+        const existing = this.library.findByNotebookUuid(nb.uuid);
+        const item: ImportedNotebookItem = {
+          status: existing ? "already_in_library" : dryRun ? "would_import" : "imported",
+          library_id: existing?.id ?? null,
+          name: existing?.name ?? nb.title,
+          uuid: nb.uuid,
+          url: nb.url,
+          sources: nb.sources,
+          created_at: nb.created_at,
+          scope: nb.scope,
+        };
+        items.push(item);
+        if (!existing && !dryRun) toAdd.push({ nb, item });
+      }
+
+      const added = this.library.addNotebooks(
+        toAdd.map(({ nb }) => ({
+          url: nb.url,
+          name: nb.title,
+          description:
+            `Imported from the NotebookLM account` +
+            (nb.sources !== null ? ` (${nb.sources} source${nb.sources === 1 ? "" : "s"})` : "") +
+            ".",
+          topics: [],
+          content_types: [],
+          use_cases: [],
+          tags: ["imported", nb.scope === "shared" ? "shared-with-me" : "own"],
+        }))
+      );
+      added.forEach((entry, i) => (toAdd[i].item.library_id = entry.id));
+
+      const count = (s: ImportedNotebookItem["status"]) =>
+        items.filter((i) => i.status === s).length;
+      log.success(
+        `✅ [TOOL] import_account_notebooks: ${found.length} found, ` +
+          `${added.length} imported, ${count("already_in_library")} already in library`
+      );
+      return {
+        success: true,
+        data: {
+          dry_run: dryRun,
+          scope,
+          found: found.length,
+          matched: selected.length,
+          imported: added.length,
+          already_in_library: count("already_in_library"),
+          active_notebook_id: this.library.getActiveNotebook()?.id ?? null,
+          notebooks: items,
+          ...(added.length > 0 && {
+            next_step:
+              "Imported notebooks have only a placeholder description and no topics. " +
+              "Fill them in with update_notebook for the ones the user cares about.",
+          }),
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      log.error(`❌ [TOOL] import_account_notebooks failed: ${msg}`);
+      return { success: false, error: msg };
+    }
   }
 
   /**

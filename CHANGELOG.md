@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `import_account_notebooks` — reads the signed-in account's notebooks from
+  the NotebookLM homepage ("My notebooks", optionally "Shared with me") and
+  adds the missing ones to the local library without share-links. Supports
+  `dry_run`, a title `query` and `notebook_ids`; skips notebooks already in
+  the library (matched by UUID) and restores the homepage filter the user had
+  selected. Verified live (EN locale) through the MCP server: dry run,
+  filtered and full import, and a repeat run that skips everything.
+
 ## [3.0.0] - 2026-10-04
 
 First release after taking over development from the archived upstream

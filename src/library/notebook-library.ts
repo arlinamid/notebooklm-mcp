@@ -145,41 +145,57 @@ export class NotebookLibrary {
    */
   addNotebook(input: AddNotebookInput): NotebookEntry {
     log.info(`📝 Adding notebook: ${input.name}`);
+    const [notebook] = this.addNotebooks([input]);
+    log.success(`✅ Notebook added: ${notebook.id}`);
+    return notebook;
+  }
 
-    // Generate ID
-    const id = this.generateId(input.name);
-
-    // Create entry
-    const notebook: NotebookEntry = {
-      id,
-      url: input.url,
-      name: input.name,
-      description: input.description,
-      topics: input.topics,
-      content_types: input.content_types || ["documentation", "examples"],
-      use_cases: input.use_cases || [
-        `Learning about ${input.name}`,
-        `Implementing features with ${input.name}`,
-      ],
-      added_at: new Date().toISOString(),
-      last_used: new Date().toISOString(),
-      use_count: 0,
-      tags: input.tags || [],
-    };
-
-    // Add to library
+  /**
+   * Add several notebooks with a single library write. The first one becomes
+   * active when the library was empty.
+   */
+  addNotebooks(inputs: AddNotebookInput[]): NotebookEntry[] {
     const updated = { ...this.library };
-    updated.notebooks.push(notebook);
+    const wasEmpty = updated.notebooks.length === 0;
+    const added: NotebookEntry[] = [];
+    for (const input of inputs) {
+      const notebook: NotebookEntry = {
+        id: this.generateId(input.name),
+        url: input.url,
+        name: input.name,
+        description: input.description,
+        topics: input.topics,
+        content_types: input.content_types || ["documentation", "examples"],
+        use_cases: input.use_cases || [
+          `Learning about ${input.name}`,
+          `Implementing features with ${input.name}`,
+        ],
+        added_at: new Date().toISOString(),
+        last_used: new Date().toISOString(),
+        use_count: 0,
+        tags: input.tags || [],
+      };
+      // generateId checks this.library.notebooks, which is the same array.
+      updated.notebooks.push(notebook);
+      added.push(notebook);
+    }
+    if (added.length === 0) return added;
 
-    // Set as active if it's the first notebook
-    if (updated.notebooks.length === 1) {
-      updated.active_notebook_id = id;
+    if (wasEmpty) {
+      updated.active_notebook_id = added[0].id;
     }
 
     this.saveLibrary(updated);
-    log.success(`✅ Notebook added: ${id}`);
+    return added;
+  }
 
-    return notebook;
+  /**
+   * Find a notebook by NotebookLM's own id (the UUID in its URL), so the same
+   * notebook is recognised under the legacy host or with `?authuser=N`.
+   */
+  findByNotebookUuid(uuid: string): NotebookEntry | null {
+    const needle = uuid.toLowerCase();
+    return this.library.notebooks.find((n) => n.url.toLowerCase().includes(needle)) || null;
   }
 
   /**

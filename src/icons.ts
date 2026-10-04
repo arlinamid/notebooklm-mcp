@@ -36,6 +36,7 @@ export const SERVER_ICONS = icons("notebook");
 const TOOL_GROUPS: Record<IconName, string[]> = {
   notebook: [
     "add_notebook",
+    "import_account_notebooks",
     "list_notebooks",
     "get_notebook",
     "select_notebook",

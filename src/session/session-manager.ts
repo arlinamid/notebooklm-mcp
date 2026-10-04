@@ -12,6 +12,7 @@
  * Based on the Python implementation from session_manager.py
  */
 
+import type { Page } from "patchright";
 import type { AuthManager } from "../auth/auth-manager.js";
 import { BrowserSession } from "./browser-session.js";
 import { SharedContextManager } from "./shared-context-manager.js";
@@ -151,6 +152,21 @@ export class SessionManager {
     } catch (error) {
       log.error(`❌ Failed to create session: ${error}`);
       throw error;
+    }
+  }
+
+  /**
+   * Run `fn` on a throwaway tab in the shared (signed-in) context, for pages
+   * that are not a notebook — e.g. the NotebookLM homepage. The tab is not a
+   * session and is closed afterwards.
+   */
+  async withScratchPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+    const context = await this.sharedContextManager.getOrCreateContext();
+    const page = await context.newPage();
+    try {
+      return await fn(page);
+    } finally {
+      await page.close().catch(() => undefined);
     }
   }
 

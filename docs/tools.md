@@ -219,6 +219,48 @@ Add a NotebookLM share-URL to the local library. The tool description enforces a
 
 ---
 
+## import_account_notebooks
+
+Read the signed-in account's notebooks from the NotebookLM homepage ("My notebooks" / "Shared with me") and add the ones not yet in the local library — no share-links needed. Notebooks already in the library (matched by the UUID in the URL) are skipped, so repeated runs are safe; Featured / Discover notebooks are never imported. Imported entries get a placeholder description and no topics — fill them in with `update_notebook`.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `scope` | `"mine"` \| `"shared"` \| `"all"` | no | Default `"mine"`. |
+| `query` | string | no | Only titles containing this text (case-insensitive). |
+| `notebook_ids` | string[] | no | Only these notebooks — `uuid` values from a dry run, or notebook URLs. |
+| `dry_run` | boolean | no | List without changing the library. Default `false`. |
+
+### Return shape
+
+```jsonc
+{
+  "dry_run": false,
+  "scope": "mine",
+  "found": 12,              // notebooks on the homepage for the scope
+  "matched": 12,            // after query / notebook_ids
+  "imported": 11,
+  "already_in_library": 1,
+  "active_notebook_id": "n8n-documentation",
+  "notebooks": [
+    {
+      "status": "imported",         // | "would_import" (dry run) | "already_in_library"
+      "library_id": "react-hooks",  // null for would_import
+      "name": "React Hooks",
+      "uuid": "<notebook-uuid>",
+      "url": "https://notebook.google.com/notebook/<notebook-uuid>",
+      "sources": 8,
+      "created_at": "2026-05-07T18:29:16.000Z",
+      "scope": "mine"
+    }
+  ],
+  "next_step": "Imported notebooks have only a placeholder description …"
+}
+```
+
+---
+
 ## list_notebooks
 
 No parameters. Returns the full library.
