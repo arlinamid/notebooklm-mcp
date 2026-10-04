@@ -16,12 +16,16 @@
  */
 
 import type { Page } from "patchright";
+import { throwIfCancelled } from "../utils/request-context.js";
 
 /**
  * Sleep that is robust against a zombie page returning early. Always honours
  * at least 95 % of the requested duration via a Node-side timer fallback.
  */
 export async function safeSleep(page: Page, ms: number): Promise<void> {
+  // Every polling loop sleeps through here, so this is where a cancelled
+  // MCP request stops its browser work.
+  throwIfCancelled();
   const start = Date.now();
   try {
     await page.waitForTimeout(ms);
@@ -33,6 +37,7 @@ export async function safeSleep(page: Page, ms: number): Promise<void> {
   if (remaining > ms * 0.05) {
     await new Promise<void>((resolve) => setTimeout(resolve, remaining));
   }
+  throwIfCancelled();
 }
 
 /**

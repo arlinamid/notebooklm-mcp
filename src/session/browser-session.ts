@@ -19,6 +19,40 @@ import type { AuthManager } from "../auth/auth-manager.js";
 import { humanType, randomDelay } from "../utils/stealth-utils.js";
 import { snapshotAllResponses } from "../utils/page-utils.js";
 import { waitForStableAnswer, snapshotPriorAnswers } from "../notebooklm/chat.js";
+import { dismissPromoDialogs } from "../notebooklm/dialogs.js";
+import {
+  generateStudioArtifact,
+  listStudioArtifacts,
+  type GenerateStudioOptions,
+  type GenerateStudioResult,
+  type StudioArtifact,
+} from "../notebooklm/studio.js";
+import { readUsage, type UsageInfo } from "../notebooklm/usage.js";
+import {
+  deleteSource as deleteSourceOnPage,
+  deleteStudioEntry as deleteStudioEntryOnPage,
+  resolveSourceTarget,
+  resolveStudioTarget,
+  type DeleteResult,
+  type DeleteTarget,
+} from "../notebooklm/deletion.js";
+import {
+  listSources,
+  setChatSources,
+  restoreChatSources,
+  type NotebookSource,
+} from "../notebooklm/source-select.js";
+import {
+  saveAnswerAsNote as saveAnswerAsNoteOnPage,
+  convertNoteToSource as convertNoteToSourceOnPage,
+  type SavedNote,
+  type ConvertResult,
+} from "../notebooklm/notes.js";
+import {
+  configureChat as configureChatOnPage,
+  type ChatConfigInput,
+  type ChatConfigResult,
+} from "../notebooklm/chat-config.js";
 import {
   extractCitations as extractCitationsFromPage,
   type SourceFormat,
@@ -48,6 +82,8 @@ export class BrowserSession {
   public readonly createdAt: number;
   public lastActivity: number;
   public messageCount: number;
+  /** Source titles the last `ask()` was scoped to (null = all sources). */
+  public lastScopedSources: string[] | null = null;
 
   private context!: BrowserContext;
   private sharedContextManager: SharedContextManager;
@@ -145,6 +181,10 @@ export class BrowserSession {
       // Wait for NotebookLM interface to load
       log.info(`  ⏳ Waiting for NotebookLM interface...`);
       await this.waitForNotebookLMReady();
+
+      // Announcement modals (e.g. the 2026-09 "Gemini Notebook" promo) sit
+      // on top of the chat and swallow every click and keystroke.
+      await dismissPromoDialogs(this.page);
 
       this.initialized = true;
       this.updateActivity();
@@ -360,8 +400,34 @@ export class BrowserSession {
   /**
    * Ask a question to NotebookLM
    */
-  async ask(question: string, sendProgress?: ProgressCallback): Promise<string> {
+  async ask(
+    question: string,
+    sendProgress?: ProgressCallback,
+    options: { sources?: string[] } = {}
+  ): Promise<string> {
+    this.lastScopedSources = null;
     const askOnce = async (): Promise<string> => {
+      // Optional source scoping (sidebar checkboxes); restored afterwards so
+      // the notebook's selection is not changed permanently.
+      let restoreSelection: Set<string> | null = null;
+      if (options.sources) {
+        if (!this.initialized || !this.page || this.isPageClosedSafe()) await this.init();
+        const scoped = await setChatSources(this.page!, options.sources);
+        restoreSelection = scoped.previous;
+        this.lastScopedSources = scoped.selected;
+        log.info(`  🎯 Chat scoped to ${scoped.selected.length} source(s)`);
+      }
+      try {
+        return await askScoped();
+      } finally {
+        if (restoreSelection && this.page && !this.isPageClosedSafe()) {
+          await restoreChatSources(this.page, restoreSelection).catch((e) =>
+            log.warning(`  ⚠️  Could not restore source selection: ${e}`)
+          );
+        }
+      }
+    };
+    const askScoped = async (): Promise<string> => {
       if (!this.initialized || !this.page || this.isPageClosedSafe()) {
         log.warning(`  ℹ️  Session not initialized or page missing → re-initializing...`);
         await this.init();
@@ -392,6 +458,7 @@ export class BrowserSession {
       log.success(`  ✅ Captured ${existingResponses.length} existing responses`);
 
       // Find the chat input
+      await dismissPromoDialogs(page);
       const inputSelector = await this.findChatInput();
       if (!inputSelector) {
         throw new Error(
@@ -437,9 +504,7 @@ export class BrowserSession {
       // Check for rate limit errors AFTER receiving answer
       log.info(`  🔍 Checking for rate limit errors...`);
       if (await this.detectRateLimitError()) {
-        throw new RateLimitError(
-          "NotebookLM rate limit reached (50 queries/day for free accounts)"
-        );
+        throw new RateLimitError();
       }
 
       // Update session stats
@@ -514,6 +579,120 @@ export class BrowserSession {
   }
 
   /**
+   * Generate any Studio output type via its customise dialog (2026-09 UI).
+   */
+  async generateStudio(options: GenerateStudioOptions): Promise<GenerateStudioResult> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return await generateStudioArtifact(this.page!, options);
+  }
+
+  /**
+   * List the Studio library (finished + generating items).
+   */
+  async listStudio(): Promise<StudioArtifact[]> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    return await listStudioArtifacts(this.page!);
+  }
+
+  /**
+   * Resolve what a delete call would remove, without changing anything.
+   */
+  async resolveDeleteTarget(
+    ref: string,
+    kind: "source" | "note" | "studio_item" | undefined,
+    isSource: boolean
+  ): Promise<DeleteTarget> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return isSource
+      ? await resolveSourceTarget(this.page!, ref)
+      : await resolveStudioTarget(this.page!, ref, kind === "source" ? undefined : kind);
+  }
+
+  /**
+   * Permanently delete a source (caller must have user confirmation).
+   */
+  async deleteSource(ref: string): Promise<DeleteResult> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return await deleteSourceOnPage(this.page!, ref);
+  }
+
+  /**
+   * Permanently delete a Studio output or note (caller must have user confirmation).
+   */
+  async deleteStudioEntry(title: string, kind?: "note" | "studio_item"): Promise<DeleteResult> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return await deleteStudioEntryOnPage(this.page!, title, kind);
+  }
+
+  /**
+   * List the notebook's sources (id, title, kind, chat selection).
+   */
+  async listSources(): Promise<NotebookSource[]> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    return await listSources(this.page!);
+  }
+
+  /**
+   * Pin a chat answer as a note (latest answer, or the answer to `question`).
+   */
+  async saveAnswerAsNote(question?: string): Promise<SavedNote> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return await saveAnswerAsNoteOnPage(this.page!, question);
+  }
+
+  /**
+   * Turn a note (or all notes) into source(s).
+   */
+  async convertNoteToSource(opts: { title?: string; all?: boolean }): Promise<ConvertResult> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return await convertNoteToSourceOnPage(this.page!, opts);
+  }
+
+  /**
+   * Read or change the notebook's chat configuration.
+   */
+  async configureChat(input: ChatConfigInput): Promise<ChatConfigResult> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return await configureChatOnPage(this.page!, input);
+  }
+
+  /**
+   * Read the AI usage & limits dialog.
+   */
+  async getUsage(): Promise<UsageInfo> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+      await this.init();
+    }
+    await dismissPromoDialogs(this.page!);
+    return await readUsage(this.page!);
+  }
+
+  /**
    * Download the most recent Audio Overview (issue #11).
    */
   async downloadAudio(destinationDir: string): Promise<DownloadAudioResult> {
@@ -560,7 +739,9 @@ export class BrowserSession {
       // Locale-bound aria-label fallbacks for older builds.
       'textarea[aria-label="Feld für Anfragen"]',
       'textarea[aria-label*="anfrag" i]',
-      'textarea[aria-label*="query" i]',
+      // Excludes the sidebar web-source search box, whose aria-label also
+      // contains "query".
+      'textarea:not(.query-box-textarea)[aria-label*="query" i]',
       'textarea[aria-label*="zone de requete" i]',
       'textarea[aria-label*="requete" i]',
       'textarea[aria-label*="consulta" i]',
@@ -642,7 +823,7 @@ export class BrowserSession {
    * Detect if a rate limit error occurred
    *
    * Searches the page for error messages indicating rate limit/quota exhaustion.
-   * Free NotebookLM accounts have 50 queries/day limit.
+   * Usage is metered (rolling window + weekly limit) since 2026-09.
    *
    * @returns true if rate limit error detected, false otherwise
    */
@@ -675,6 +856,7 @@ export class BrowserSession {
       "quota",
       "query limit",
       "request limit",
+      "usage limit",
     ];
 
     // Check error containers for rate limit messages

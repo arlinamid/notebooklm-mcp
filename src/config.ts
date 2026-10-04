@@ -21,11 +21,53 @@ import path from "path";
 const paths = envPaths("notebooklm-mcp", { suffix: "" });
 
 /**
+ * NotebookLM was rebranded to "Gemini Notebook" (2026-09) and moved from
+ * notebooklm.google.com to notebook.google.com. The old host 301-redirects
+ * with path + query preserved, so old notebook links keep working, but any
+ * host check must accept both.
+ */
+export const NOTEBOOKLM_HOST = "notebook.google.com";
+export const NOTEBOOKLM_LEGACY_HOST = "notebooklm.google.com";
+export const NOTEBOOKLM_BASE_URL = `https://${NOTEBOOKLM_HOST}/`;
+
+/** True if the URL points at NotebookLM (current or legacy host). */
+export function isNotebookLMUrl(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return (
+      protocol === "https:" && (hostname === NOTEBOOKLM_HOST || hostname === NOTEBOOKLM_LEGACY_HOST)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rewrite legacy notebooklm.google.com links to the current host. Avoids a
+ * redirect per navigation and keeps origin comparisons (sessionStorage
+ * restore) consistent with the URL the page actually ends up on.
+ */
+export function normalizeNotebookUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.hostname === NOTEBOOKLM_LEGACY_HOST) {
+      u.hostname = NOTEBOOKLM_HOST;
+      return u.toString();
+    }
+  } catch {
+    /* not a URL — leave untouched */
+  }
+  return url;
+}
+
+/**
  * Google NotebookLM Auth URL (used by setup_auth)
  * This is the base Google login URL that redirects to NotebookLM
  */
 export const NOTEBOOKLM_AUTH_URL =
-  "https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fnotebooklm.google.com%2F&flowName=GlifWebSignIn&flowEntry=ServiceLogin";
+  "https://accounts.google.com/v3/signin/identifier?continue=" +
+  encodeURIComponent(NOTEBOOKLM_BASE_URL) +
+  "&flowName=GlifWebSignIn&flowEntry=ServiceLogin";
 
 export interface Config {
   // NotebookLM - optional, used for legacy default notebook

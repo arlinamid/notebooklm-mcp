@@ -23,8 +23,8 @@
  *      breaks if a locale is missing because the class/icon anchors fire
  *      first.
  *
- * Last verified: 2026-05 against the live notebooklm.google.com layout
- * (DE, EN locales).
+ * Last verified: 2026-10 against the live notebook.google.com ("Gemini
+ * Notebook", formerly notebooklm.google.com) layout (EN locale).
  */
 
 export const Selectors = {
@@ -33,12 +33,22 @@ export const Selectors = {
     answerText: ".to-user-container .message-text-content",
     latestAnswerText: ".to-user-container:last-child .message-text-content",
     /**
+     * Collapsible reasoning block ("Thoughts") rendered inside the answer
+     * bubble since 2026-09. Excluded from the extracted answer text.
+     */
+    thinkingBlock: "thinking-chain-view, .thinking-chain",
+    /** One question/answer turn (2026-09); legacy builds only had the containers. */
+    turn: ".chat-message-pair, .to-user-container",
+    /**
      * Chat textarea. The class is shared across locales; aria-labels are a
      * fallback for older builds where the class was different.
      */
     queryInput: [
       "textarea.query-box-input",
-      'textarea[aria-label*="query" i]',
+      'textarea[aria-label="Query box"]',
+      // `:not(.query-box-textarea)` excludes the sidebar web-source search box
+      // ("Discover sources based on the inputted query"), which also matches.
+      'textarea:not(.query-box-textarea)[aria-label*="query" i]',
       'textarea[aria-label*="anfrag" i]',
       'textarea[aria-label*="requete" i]',
       'textarea[aria-label*="zone de requete" i]',
@@ -56,6 +66,9 @@ export const Selectors = {
      * anchor on `.submit-button` to avoid distractor matches.
      */
     submitButton: [
+      // 2026-09: the class moved to the `<nb-icon-button>` wrapper.
+      "query-box .submit-button button",
+      'query-box button[aria-label="Submit"]',
       "button.submit-button",
       'button.submit-button[aria-label*="send" i]',
       'button.submit-button[aria-label*="senden" i]',
@@ -101,6 +114,14 @@ export const Selectors = {
       "button[data-citation]",
     ],
     label: "span[aria-label]",
+    /**
+     * Since 2026-09 a marker click opens an inline tooltip instead of the
+     * source panel: `.citation-tooltip-header` = source title,
+     * `.citation-tooltip-text` = cited passage.
+     */
+    tooltip: "xap-inline-dialog-container .citation-tooltip",
+    tooltipHeader: ".citation-tooltip-header",
+    tooltipText: ".citation-tooltip .citation-tooltip-text",
     highlight: ".highlighted",
     paragraph: ".paragraph",
     paragraphHighlight: ".paragraph .highlighted",
@@ -112,6 +133,8 @@ export const Selectors = {
      * class — verified across all observed locales.
      */
     sourceContainer: ".single-source-container",
+    /** Row "More" button id prefix; the rest of the id is the source UUID. */
+    rowIdPrefix: "source-item-more-button-",
     /**
      * "X Quellen" / "X sources" header text. Numeric so we read the count
      * via regex on the visible text. Independent of sidebar collapse state.
@@ -139,60 +162,64 @@ export const Selectors = {
      * the moment the modal mounts — race-free against the `.mdc-dialog--open`
      * animation class and resistant to Material-UI version bumps. Avoid
      * `.cdk-overlay-pane` (matches every dropdown / emoji picker / menu).
+     *
+     * Scoped to `mat-dialog-container`: since 2026-09 the page keeps a hidden
+     * `xap-emoji-picker` with `role="dialog"` mounted at all times, which a
+     * bare `[role="dialog"]` `.first()` would pick up instead of the modal.
+     * Announcement modals are closed beforehand by `dismissPromoDialogs`.
      */
-    overlayPane: '[role="dialog"]',
-    overlayInput: '[role="dialog"] input[type="text"]:not([readonly])',
-    overlayTextarea: '[role="dialog"] textarea',
+    overlayPane: 'mat-dialog-container[role="dialog"]',
+    overlayInput: 'mat-dialog-container[role="dialog"] input[type="text"]:not([readonly])',
+    overlayTextarea:
+      'mat-dialog-container[role="dialog"] textarea:not(.query-box-textarea):not(.query-box-input)',
     /**
-     * Source-type buttons in the Add-source overlay. Google ships them
+     * Source-type buttons in the Add-source overlay (`.source-action-button`
+     * since 2026-09, `.drop-zone-icon-button` before). Google ships them
      * *without* aria-labels — the only stable, language-agnostic anchor is
      * the Material-Symbols icon name baked into a `<mat-icon>` text node.
      */
     sourceTypeUrl: [
       // Icon-anchored (language-free) — primary path.
-      "button.drop-zone-icon-button:has(mat-icon.youtube-icon)",
-      'button.drop-zone-icon-button:has(mat-icon:text-is("link"))',
+      "button:is(.source-action-button, .drop-zone-icon-button):has(mat-icon.youtube-icon)",
+      'button:is(.source-action-button, .drop-zone-icon-button):has(mat-icon:text-is("link_2"))',
+      'button:is(.source-action-button, .drop-zone-icon-button):has(mat-icon:text-is("link"))',
       // Visible-text fallbacks for the eight major locales.
-      'button.drop-zone-icon-button:has-text("Websites")',
-      'button.drop-zone-icon-button:has-text("Website")',
-      'button.drop-zone-icon-button:has-text("Sites Web")',
-      'button.drop-zone-icon-button:has-text("Sitio web")',
-      'button.drop-zone-icon-button:has-text("Sito web")',
-      'button.drop-zone-icon-button:has-text("Sites")',
-      'button.drop-zone-icon-button:has-text("ウェブサイト")',
-      'span:has-text("Website")',
-      'span:has-text("URL")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Websites")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Website")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Sites Web")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Sitio web")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Sito web")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Sites")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("ウェブサイト")',
     ],
     sourceTypeText: [
       // Icon-anchored (language-free) — primary path.
-      'button.drop-zone-icon-button:has(mat-icon:text-is("content_paste"))',
+      'button:is(.source-action-button, .drop-zone-icon-button):has(mat-icon:text-is("content_paste"))',
       // Visible-text fallbacks for major locales.
-      'button.drop-zone-icon-button:has-text("Kopierter Text")',
-      'button.drop-zone-icon-button:has-text("Copied text")',
-      'button.drop-zone-icon-button:has-text("Pasted text")',
-      'button.drop-zone-icon-button:has-text("Texte copié")',
-      'button.drop-zone-icon-button:has-text("Texto copiado")',
-      'button.drop-zone-icon-button:has-text("Testo copiato")',
-      'button.drop-zone-icon-button:has-text("Gekopieerde tekst")',
-      'button.drop-zone-icon-button:has-text("コピーしたテキスト")',
-      'span:has-text("Copied text")',
-      'span:has-text("Pasted text")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Kopierter Text")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Copied text")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Pasted text")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Texte copié")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Texto copiado")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Testo copiato")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Gekopieerde tekst")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("コピーしたテキスト")',
       '[data-type="text"]',
     ],
     sourceTypeYoutube: [
-      "button.drop-zone-icon-button mat-icon.youtube-icon",
-      'button.drop-zone-icon-button:has(mat-icon:text-is("video_youtube"))',
+      "button:is(.source-action-button, .drop-zone-icon-button) mat-icon.youtube-icon",
+      'button:is(.source-action-button, .drop-zone-icon-button):has(mat-icon:text-is("video_youtube"))',
     ],
     sourceTypeFile: [
       'input[type="file"]',
-      'button.drop-zone-icon-button:has(mat-icon:text-is("upload"))',
-      'button.drop-zone-icon-button:has-text("Dateien hochladen")',
-      'button.drop-zone-icon-button:has-text("Upload sources")',
-      'button.drop-zone-icon-button:has-text("Importer")',
-      'button.drop-zone-icon-button:has-text("Subir")',
-      'button.drop-zone-icon-button:has-text("Carica")',
-      'button.drop-zone-icon-button:has-text("Uploaden")',
-      'button.drop-zone-icon-button:has-text("アップロード")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has(mat-icon:text-is("upload"))',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Dateien hochladen")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Upload sources")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Importer")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Subir")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Carica")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("Uploaden")',
+      'button:is(.source-action-button, .drop-zone-icon-button):has-text("アップロード")',
     ],
     /**
      * Primary submit button in the add-source dialog. Material's
@@ -200,7 +227,8 @@ export const Selectors = {
      * visible-text variants are fallbacks for older builds.
      */
     insertConfirm: [
-      // Class-anchored (language-free).
+      // Class-anchored (language-free). 2026-09: unelevated primary button.
+      "button.mdc-button--unelevated.mat-primary",
       'button.mdc-button--raised:has-text("Insert")',
       'button.mat-flat-button:has-text("Insert")',
       'button[color="primary"]:has-text("Insert")',
@@ -231,7 +259,7 @@ export const Selectors = {
       'button:has-text("Add")',
       'button:has-text("Submit")',
       'button[type="submit"]',
-      '[role="dialog"] .mdc-dialog__actions button:not(:has-text("Cancel")):not(:has-text("Close")):not(:has-text("Schließen")):not(:has-text("Annuler")):not(:has-text("Cancelar")):not(:has-text("Annulla")):not(:has-text("Annuleren")):not(:has-text("キャンセル"))',
+      'mat-dialog-container .mdc-dialog__actions button:not(:has-text("Cancel")):not(:has-text("Close")):not(:has-text("Schließen")):not(:has-text("Annuler")):not(:has-text("Cancelar")):not(:has-text("Annulla")):not(:has-text("Annuleren")):not(:has-text("キャンセル"))',
     ],
   },
 
@@ -243,6 +271,7 @@ export const Selectors = {
      */
     audioOverviewButton: [
       // Icon-anchored (language-free) — primary path.
+      '.create-artifact-button-container:has(mat-icon:text-is("audio_spark"))',
       '.create-artifact-button-container:has(mat-icon:text-is("audio_magic_eraser"))',
       '[role="button"]:has(mat-icon:text-is("audio_magic_eraser"))',
       // Locale-bound aria-labels for the eight major locales.
@@ -261,6 +290,47 @@ export const Selectors = {
       'button[aria-label*="audio-zusammenfassung" i]',
       'button[aria-label*="podcast" i]',
     ],
+    /**
+     * 2026-09: every Studio tile opens a customise dialog; nothing is
+     * generated until a footer button is clicked. Reports uses its own host.
+     */
+    customiseDialog:
+      "mat-dialog-container:has(configurable-form-dialog), mat-dialog-container:has(report-customization-dialog)",
+    /** "Generate now" — tonal nb-button (language-free), text fallbacks after. */
+    generateNowButton: [
+      "mat-dialog-actions .action-button-wrapper button",
+      "mat-dialog-actions nb-button.nb-button-type-tonal button",
+      'mat-dialog-actions button:has-text("Generate now")',
+      // Variant without the usage footer: a single "Generate" button.
+      'mat-dialog-actions button:has-text("Generate"):not(:has-text("later"))',
+    ],
+    /** "Generate later" — queued, doesn't use the current limit window. */
+    generateLaterButton: [
+      "mat-dialog-actions nb-button.nb-button-type-on-surface button",
+      'mat-dialog-actions button:has-text("Generate later")',
+    ],
+    /** "N sources" button in a Studio dialog → source picker sub-view. */
+    sourcesTrigger: ".item-selection-trigger button",
+    /** One option per source; `data-value` = source UUID, `.item-name` = title. */
+    sourcesOption: "mat-selection-list mat-list-option",
+    /**
+     * Picker footer "Confirm" — same slot/markup as "Generate now", so only
+     * click it while the picker is open.
+     */
+    sourcesConfirmButton: [
+      "mat-dialog-actions .action-button-wrapper button",
+      "mat-dialog-actions nb-button.nb-button-type-tonal button",
+      'mat-dialog-actions button:has-text("Confirm")',
+    ],
+    /** Report dialog: format cards (Interactive | Document) — by position. */
+    reportFormatCard: '[role="radio"].format-card',
+    /** Report templates — selection only; order per format is stable. */
+    reportTemplateButton: "button.primary-action-button:not(.disabled)",
+    /** Pencil of the currently selected template → editable instructions. */
+    reportSelectedTemplateEdit:
+      '.option-card.selected button:has(mat-icon:text-is("edit")), .option-card.selected button[aria-label="Customize Report"]',
+    /** Usage meter in the Studio dialog footer; `aria-valuenow` = percent used. */
+    usageMeter: 'expected-usage [role="progressbar"]',
     /**
      * Generate / Generieren / Générer trigger inside the customise dialog.
      * Visible-text varies by locale.
@@ -302,31 +372,46 @@ export const Selectors = {
      * ready" signal because it only mounts after generation completes.
      */
     audioPlayer: [
-      "artifact-library-item:has(button.artifact-action-button)",
-      ".artifact-library-container artifact-library-item",
+      // Icon-anchored (language-free). The Studio library also lists reports,
+      // slide decks, mind maps … so an unscoped `artifact-library-item` would
+      // falsely report "audio ready" — always filter by the audio glyph.
+      'artifact-library-item:has(mat-icon.artifact-icon:text-is("audio_spark"))',
+      'artifact-library-item:has(mat-icon.artifact-icon:text-is("audio_magic_eraser"))',
+      // A generating tile carries the same aria-description but a disabled
+      // button and a `progress_activity` glyph — exclude it.
+      'artifact-library-item:has(button[aria-description="Audio Overview"]:not([disabled])):not(:has(mat-icon.artifact-icon:text-is("progress_activity")))',
       // Legacy <audio> tag for older builds.
       "audio",
       '[role="audio"]',
+    ],
+    /**
+     * Audio tile that is still generating (2026-09): spinning
+     * `progress_activity` glyph, disabled main button, title "Generating
+     * Audio Overview...". aria-description is locale-bound, so the
+     * language-free fallback matches any generating tile with the audio
+     * accent colour (blue — shared only with Data Table).
+     */
+    audioGenerating: [
+      'artifact-library-item:has(mat-icon.artifact-icon:text-is("progress_activity")):has(button[aria-description="Audio Overview"])',
+      'artifact-library-item[data-studio-accent="blue"]:has(mat-icon.artifact-icon:text-is("progress_activity"))',
     ],
     /**
      * Per-tile "Mehr"/"More"/"Plus"/… three-dot button. Opens the menu that
      * contains the Download item.
      */
     audioMoreMenuButton: [
-      "artifact-library-item button:has(mat-icon:text-is(\"more_vert\"))",
-      'artifact-library-item button[aria-label*="mehr" i]',
-      'artifact-library-item button[aria-label*="more" i]',
-      'artifact-library-item button[aria-label*="plus" i]',
-      'artifact-library-item button[aria-label*="más" i]',
-      'artifact-library-item button[aria-label*="altro" i]',
-      'artifact-library-item button[aria-label*="mais" i]',
-      'artifact-library-item button[aria-label*="meer" i]',
-      'artifact-library-item button[aria-label*="その他" i]',
+      'artifact-library-item:has(mat-icon.artifact-icon:text-is("audio_spark")) .artifact-more-button button',
+      'artifact-library-item:has(mat-icon.artifact-icon:text-is("audio_magic_eraser")) .artifact-more-button button',
+      'artifact-library-item:has(button[aria-description="Audio Overview"]) button[aria-label="More"]',
+      // Unscoped `artifact-library-item button[aria-label*="more"]` fallbacks
+      // were removed: they open the menu of whatever tile comes first
+      // (report, slide deck, …) and download the wrong artifact.
     ],
     /**
      * Download menu-item that surfaces after clicking the three-dot menu.
      */
     audioDownloadMenuItem: [
+      '[role="menuitem"]:has(mat-icon:text-is("save_alt"))',
       '[role="menuitem"]:has(mat-icon:text-is("download"))',
       '[role="menuitem"]:has-text("Download")',
       '[role="menuitem"]:has-text("Herunterladen")',
@@ -339,9 +424,54 @@ export const Selectors = {
     ],
   },
 
+  /** Deletion (2026-09): "delete" glyph menu items + confirm dialogs. */
+  deletion: {
+    menuItem: '[role="menuitem"]:has(mat-icon:text-is("delete"))',
+    sourceDialogHost: "delete-source",
+    studioDialogHost: "delete-dialog",
+  },
+
+  /** Notes (2026-09): chat answer → note → source. Glyph-anchored. */
+  notes: {
+    chatPair: ".chat-message-pair",
+    pairQuestion: ".from-user-container",
+    saveAnswerButton:
+      '.to-user-container button:has(mat-icon:text-is("keep_pin")), .to-user-container button[aria-label="Save message to a note"]',
+    editor: "note-editor",
+    editorTitle: 'input.note-header__editable-title, input[aria-label="note title editable"]',
+    editorBody: "labs-tailwind-doc-viewer",
+    closeEditor:
+      '.panel-header button:has(mat-icon:text-is("collapse_content")), .panel-header button[aria-label="Close note view"]',
+    libraryNote: "artifact-library-note",
+    moreButton: 'button:has(mat-icon:text-is("more_vert"))',
+    convertMenuItem: '[role="menuitem"]:has(mat-icon:text-is("convert_to_text"))',
+    convertAllMenuItem: '[role="menuitem"]:has(mat-icon:text-is("docs_add_on"))',
+  },
+
+  /** Top-bar settings menu (2026-09). Icon-anchored, EN aria fallback. */
+  settings: {
+    menuButton: ['button:has(mat-icon:text-is("settings"))', 'button[aria-label="Settings"]'],
+    usageMenuItem: [
+      '[role="menuitem"]:has(mat-icon:text-is("data_usage"))',
+      '[role="menuitem"][aria-label="Show usage dialog"]',
+    ],
+    usageDialog: "mat-dialog-container:has(usage-limits-dialog)",
+    /** Notebook menu → "Configure Chat" (`tune` glyph) dialog. */
+    notebookMenuButton: [
+      'notebook-header button:has(mat-icon:text-is("more_vert"))',
+      'button[aria-label="Notebook configuration"]',
+    ],
+    configureChatMenuItem: [
+      '[role="menuitem"]:has(mat-icon:text-is("tune"))',
+      '[role="menuitem"]:has-text("Configure Chat")',
+    ],
+    configureChatDialog: "mat-dialog-container:has(configure-notebook-settings)",
+  },
+
   notebooks: {
-    projectCard: 'button[aria-labelledby*="project-"]',
+    projectCard: 'a[aria-labelledby*="project-"], button[aria-labelledby*="project-"]',
     cardMenuButton: [
+      'button[aria-label="Project Actions Menu"]',
       'button[aria-label*="menu" i]',
       'button[aria-label*="options" i]',
       'button[aria-label*="more" i]',

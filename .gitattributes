@@ -1,0 +1,8 @@
+# Keep LF in the working tree on every platform (Prettier enforces endOfLine: lf).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.m4a binary
+*.pdf binary
