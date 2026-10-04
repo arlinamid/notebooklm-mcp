@@ -49,8 +49,13 @@ export class ResourceHandlers {
   /** Completion source for prompt arguments (prompts/get), if prompts are enabled. */
   private promptCompleter?: (prompt: string, arg: string, value: string) => string[];
   private notebookReader?: NotebookReader;
-  private subscriptions = new Map<string, { timer: NodeJS.Timeout; last: string; busy: boolean }>();
-  private server?: Server;
+  /** One poller per URI, shared by every connected MCP session that subscribed to it. */
+  private subscriptions = new Map<
+    string,
+    { timer: NodeJS.Timeout; last: string; busy: boolean; subscribers: Set<Server> }
+  >();
+  /** Connected MCP server instances (one per stdio connection / HTTP session). */
+  private servers = new Set<Server>();
 
   constructor(
     library: NotebookLibrary,
@@ -64,7 +69,21 @@ export class ResourceHandlers {
 
   /** Tell the client the resource list changed (library edits). */
   async notifyListChanged(): Promise<void> {
-    await this.server?.sendResourceListChanged().catch(() => undefined);
+    await Promise.all(
+      [...this.servers].map((s) => s.sendResourceListChanged().catch(() => undefined))
+    );
+  }
+
+  /** Forget a closed session: drop its subscriptions and stop unused pollers. */
+  unregister(server: Server): void {
+    this.servers.delete(server);
+    for (const [uri, entry] of this.subscriptions) {
+      entry.subscribers.delete(server);
+      if (entry.subscribers.size === 0) {
+        clearInterval(entry.timer);
+        this.subscriptions.delete(uri);
+      }
+    }
   }
 
   /** Stop every subscription poller (server shutdown). */
@@ -83,7 +102,7 @@ export class ResourceHandlers {
    * Register all resource handlers to the server
    */
   public registerHandlers(server: Server): void {
-    this.server = server;
+    this.servers.add(server);
 
     server.setRequestHandler(SubscribeRequestSchema, async (request) => {
       const { uri } = request.params;
@@ -92,10 +111,19 @@ export class ResourceHandlers {
           `Only live notebook views can be subscribed to (notebooklm://notebook/{id}/sources|studio), got ${uri}`
         );
       }
-      if (this.subscriptions.has(uri)) return {};
+      const existing = this.subscriptions.get(uri);
+      if (existing) {
+        existing.subscribers.add(server);
+        return {};
+      }
       const pollKey = `sub-${uri.match(NOTEBOOK_URI)![1].slice(0, 8)}`;
       const view = uri.match(NOTEBOOK_URI)![2] as NotebookView;
-      const entry = { timer: undefined as unknown as NodeJS.Timeout, last: "", busy: false };
+      const entry = {
+        timer: undefined as unknown as NodeJS.Timeout,
+        last: "",
+        busy: false,
+        subscribers: new Set<Server>([server]),
+      };
       try {
         entry.last = fingerprint(view, await this.readNotebookView(uri, pollKey));
       } catch (e) {
@@ -109,7 +137,11 @@ export class ResourceHandlers {
           if (fp !== entry.last) {
             entry.last = fp;
             log.info(`🔔 [MCP] resource updated: ${uri}`);
-            await server.sendResourceUpdated({ uri });
+            await Promise.all(
+              [...entry.subscribers].map((s) =>
+                s.sendResourceUpdated({ uri }).catch(() => undefined)
+              )
+            );
           }
         } catch (e) {
           log.warning(`⚠️  [MCP] subscription poll ${uri} failed: ${e}`);
@@ -125,7 +157,8 @@ export class ResourceHandlers {
 
     server.setRequestHandler(UnsubscribeRequestSchema, async (request) => {
       const entry = this.subscriptions.get(request.params.uri);
-      if (entry) {
+      entry?.subscribers.delete(server);
+      if (entry && entry.subscribers.size === 0) {
         clearInterval(entry.timer);
         this.subscriptions.delete(request.params.uri);
         log.info(`🔕 [MCP] unsubscribed: ${request.params.uri}`);

@@ -30,7 +30,9 @@
  * Based on the Python NotebookLM API implementation
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
@@ -38,8 +40,12 @@ import {
   ListToolsRequestSchema,
   RootsListChangedNotificationSchema,
   SetLevelRequestSchema,
+  type CallToolRequest,
   type CallToolResult,
+  type CreateTaskResult,
   type LoggingLevel,
+  type ServerNotification,
+  type ServerRequest,
   type PrimitiveSchemaDefinition,
 } from "@modelcontextprotocol/sdk/types.js";
 
@@ -197,21 +203,56 @@ function toCallToolResult(result: unknown): CallToolResult {
   };
 }
 
+/** Per-connection state: the MCP Server plus what depends on its client. */
+interface Connection {
+  server: Server;
+  fileRoots: FileRoots;
+  /** Minimum level forwarded as notifications/message (logging/setLevel). */
+  logLevel: LoggingLevel;
+}
+
+const connectionStore = new AsyncLocalStorage<Connection>();
+
+const LOG_LEVELS: LoggingLevel[] = [
+  "debug",
+  "info",
+  "notice",
+  "warning",
+  "error",
+  "critical",
+  "alert",
+  "emergency",
+];
+const envLogLevel = process.env.NOTEBOOKLM_CLIENT_LOG_LEVEL as LoggingLevel | undefined;
+const DEFAULT_CLIENT_LOG_LEVEL: LoggingLevel =
+  envLogLevel && LOG_LEVELS.includes(envLogLevel) ? envLogLevel : "warning";
+
 /**
  * Main MCP Server Class
  */
 class NotebookLMMCPServer {
-  private server: Server;
+  /** One MCP Server per client connection (stdio, or each Streamable-HTTP session). */
+  private connections = new Set<Connection>();
   private authManager: AuthManager;
   private sessionManager: SessionManager;
   private library: NotebookLibrary;
   private toolHandlers: ToolHandlers;
   private resourceHandlers: ResourceHandlers;
   private promptHandlers: PromptHandlers;
-  private fileRoots: FileRoots;
   private settingsManager: SettingsManager;
   private toolDefinitions: Tool[];
   private taskRunner: TaskRunner;
+
+  /**
+   * The connection serving the current request. Tool calls (and the tasks
+   * they start) run inside `connectionStore`; with a single connection that
+   * one is used as a fallback.
+   */
+  private conn(): Connection | undefined {
+    const current = connectionStore.getStore();
+    if (current) return current;
+    return this.connections.size === 1 ? [...this.connections][0] : undefined;
+  }
 
   /**
    * Ask the human user to approve an action through MCP elicitation (the
@@ -223,9 +264,10 @@ class NotebookLMMCPServer {
     message,
     confirmLabel = "Yes, delete permanently"
   ) => {
-    if (!this.server.getClientCapabilities()?.elicitation) return "unsupported";
+    const server = this.conn()?.server;
+    if (!server?.getClientCapabilities()?.elicitation) return "unsupported";
     try {
-      const res = await this.server.elicitInput({
+      const res = await server.elicitInput({
         message,
         requestedSchema: {
           type: "object",
@@ -259,9 +301,10 @@ class NotebookLMMCPServer {
     message: string,
     options: Array<{ value: string; label: string }>
   ): Promise<string | null> => {
-    if (!this.server.getClientCapabilities()?.elicitation || options.length === 0) return null;
+    const server = this.conn()?.server;
+    if (!server?.getClientCapabilities()?.elicitation || options.length === 0) return null;
     try {
-      const res = await this.server.elicitInput({
+      const res = await server.elicitInput({
         message,
         requestedSchema: {
           type: "object",
@@ -292,8 +335,9 @@ class NotebookLMMCPServer {
     prompt: string,
     opts: { system?: string; maxTokens?: number } = {}
   ): Promise<string | null> => {
-    if (!this.server.getClientCapabilities()?.sampling) return null;
-    const res = await this.server.createMessage({
+    const server = this.conn()?.server;
+    if (!server?.getClientCapabilities()?.sampling) return null;
+    const res = await server.createMessage({
       messages: [{ role: "user", content: { type: "text", text: prompt } }],
       ...(opts.system && { systemPrompt: opts.system }),
       maxTokens: opts.maxTokens ?? 500,
@@ -308,32 +352,6 @@ class NotebookLMMCPServer {
   };
 
   constructor() {
-    // Initialize MCP Server
-    this.server = new Server(
-      {
-        name: "notebooklm-mcp",
-        title: "NotebookLM MCP",
-        version: PACKAGE.version,
-        websiteUrl: "https://github.com/arlinamid/notebooklm-mcp",
-        icons: SERVER_ICONS,
-      },
-      {
-        capabilities: {
-          tools: {},
-          resources: { subscribe: true, listChanged: true },
-          prompts: {},
-          completions: {}, // Required for completion/complete support
-          logging: {},
-          // Experimental (spec 2025-11-25): long-running tools can run as tasks.
-          tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } },
-        },
-        // MCP-spec server instructions (clients merge into the system prompt).
-        // Use these for cross-tool workflow guidance — do not duplicate
-        // information that already lives in individual tool descriptions.
-        instructions: SERVER_INSTRUCTIONS,
-      }
-    );
-
     // Initialize managers
     this.authManager = new AuthManager();
     this.sessionManager = new SessionManager(this.authManager);
@@ -343,7 +361,6 @@ class NotebookLMMCPServer {
     // Initialize handlers
     this.toolHandlers = new ToolHandlers(this.sessionManager, this.authManager, this.library);
     this.promptHandlers = new PromptHandlers(this.library);
-    this.fileRoots = new FileRoots(this.server);
     this.resourceHandlers = new ResourceHandlers(
       this.library,
       (p, a, v) => this.promptHandlers.complete(p, a, v),
@@ -379,8 +396,7 @@ class NotebookLMMCPServer {
     );
     this.toolDefinitions = this.settingsManager.filterTools(allTools);
 
-    // Setup handlers
-    this.setupHandlers();
+    this.setupClientLogging();
     this.setupShutdownHandlers();
 
     const activeSettings = this.settingsManager.getEffectiveSettings();
@@ -392,21 +408,58 @@ class NotebookLMMCPServer {
   }
 
   /**
-   * Setup MCP request handlers
+   * Create the MCP Server for one client connection and register every
+   * handler on it. Browser sessions, the library and the task store are
+   * shared by all connections.
    */
-  private setupHandlers(): void {
+  private createConnection(): Connection {
+    const server = new Server(
+      {
+        name: "notebooklm-mcp",
+        title: "NotebookLM MCP",
+        version: PACKAGE.version,
+        websiteUrl: "https://github.com/arlinamid/notebooklm-mcp",
+        icons: SERVER_ICONS,
+      },
+      {
+        capabilities: {
+          tools: {},
+          resources: { subscribe: true, listChanged: true },
+          prompts: {},
+          completions: {}, // Required for completion/complete support
+          logging: {},
+          // Experimental (spec 2025-11-25): long-running tools can run as tasks.
+          tasks: { list: {}, cancel: {}, requests: { tools: { call: {} } } },
+        },
+        // MCP-spec server instructions (clients merge into the system prompt).
+        // Use these for cross-tool workflow guidance — do not duplicate
+        // information that already lives in individual tool descriptions.
+        instructions: SERVER_INSTRUCTIONS,
+      }
+    );
+
+    const conn: Connection = {
+      server,
+      fileRoots: new FileRoots(server),
+      logLevel: DEFAULT_CLIENT_LOG_LEVEL,
+    };
+
     // Register Resource Handlers (Resources, Templates, Completions)
-    this.resourceHandlers.registerHandlers(this.server);
-    this.promptHandlers.registerHandlers(this.server);
-    this.taskRunner.register(this.server);
-    this.setupClientLogging();
-    this.server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
+    this.resourceHandlers.registerHandlers(server);
+    this.promptHandlers.registerHandlers(server);
+    this.taskRunner.register(server);
+    server.setRequestHandler(SetLevelRequestSchema, async (request) => {
+      conn.logLevel = request.params.level;
+      log.info(`📝 [MCP] Client log level set to ${conn.logLevel}`);
+      return {};
+    });
+    server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
       log.info("📁 [MCP] Client roots changed");
-      this.fileRoots.invalidate();
+      conn.fileRoots.invalidate();
     });
 
     // List available tools
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
       log.info("📋 [MCP] list_tools request received");
       return {
         tools: this.toolDefinitions,
@@ -414,7 +467,23 @@ class NotebookLMMCPServer {
     });
 
     // Handle tool calls
-    this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    server.setRequestHandler(CallToolRequestSchema, (request, extra) =>
+      connectionStore.run(conn, () => this.handleCallTool(request, extra))
+    );
+
+    this.connections.add(conn);
+    server.onclose = () => {
+      this.connections.delete(conn);
+      this.resourceHandlers.unregister(server);
+    };
+    return conn;
+  }
+
+  private async handleCallTool(
+    request: CallToolRequest,
+    extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+  ): Promise<CallToolResult | CreateTaskResult> {
+    {
       const { name, arguments: args } = request.params;
       // The spec carries the token in `params._meta`; older clients put it
       // into the arguments object, so accept both.
@@ -460,35 +529,18 @@ class NotebookLMMCPServer {
         },
         () => this.callTool(name, args, sendProgress)
       );
-    });
+    }
   }
 
   /**
    * Forward log lines to the client as notifications/message. The server logs
    * every browser step, so until the client picks a level with logging/setLevel
    * only warnings and errors are sent (NOTEBOOKLM_CLIENT_LOG_LEVEL overrides
-   * that default). stderr logging is unchanged.
+   * that default). Each connection has its own level; stderr logging is
+   * unchanged.
    */
   private setupClientLogging(): void {
-    const order: LoggingLevel[] = [
-      "debug",
-      "info",
-      "notice",
-      "warning",
-      "error",
-      "critical",
-      "alert",
-      "emergency",
-    ];
-    const envLevel = process.env.NOTEBOOKLM_CLIENT_LOG_LEVEL as LoggingLevel | undefined;
-    let minLevel: LoggingLevel = envLevel && order.includes(envLevel) ? envLevel : "warning";
-
-    this.server.setRequestHandler(SetLevelRequestSchema, async (request) => {
-      minLevel = request.params.level;
-      log.info(`📝 [MCP] Client log level set to ${minLevel}`);
-      return {};
-    });
-
+    const order = LOG_LEVELS;
     const toMcp: Record<LogLevel, LoggingLevel> = {
       error: "error",
       warning: "warning",
@@ -500,14 +552,21 @@ class NotebookLMMCPServer {
     let sending = false;
     logger.setSink((level, message) => {
       const mcpLevel = toMcp[level];
-      if (sending || order.indexOf(mcpLevel) < order.indexOf(minLevel)) return;
+      if (sending) return;
+      const targets = [...this.connections].filter(
+        (c) => order.indexOf(mcpLevel) >= order.indexOf(c.logLevel)
+      );
+      if (targets.length === 0) return;
       sending = true; // a failed send may log; don't recurse
-      this.server
-        .sendLoggingMessage({ level: mcpLevel, logger: "notebooklm-mcp", data: message })
-        .catch(() => undefined)
-        .finally(() => {
-          sending = false;
-        });
+      void Promise.all(
+        targets.map((c) =>
+          c.server
+            .sendLoggingMessage({ level: mcpLevel, logger: "notebooklm-mcp", data: message })
+            .catch(() => undefined)
+        )
+      ).finally(() => {
+        sending = false;
+      });
     });
   }
 
@@ -531,7 +590,8 @@ class NotebookLMMCPServer {
     args: Record<string, unknown>
   ): Promise<Record<string, unknown> | null> {
     const type = String(args.type ?? "");
-    if (!this.server.getClientCapabilities()?.elicitation || !(type in STUDIO_TYPES)) return args;
+    const server = this.conn()?.server;
+    if (!server?.getClientCapabilities()?.elicitation || !(type in STUDIO_TYPES)) return args;
     const properties: Record<string, PrimitiveSchemaDefinition> = {};
     for (const f of studioOptionFields(type as StudioType)) {
       const current = args[f.arg];
@@ -567,7 +627,7 @@ class NotebookLMMCPServer {
       default: args.generate_later === true,
     };
     try {
-      const res = await this.server.elicitInput({
+      const res = await server.elicitInput({
         message: `Options for the new ${STUDIO_TYPES[type as StudioType].label}`,
         requestedSchema: { type: "object", properties },
       });
@@ -587,13 +647,19 @@ class NotebookLMMCPServer {
     name: string,
     args: Record<string, unknown> | undefined
   ): Promise<void> {
+    const needsRoots =
+      (name === "add_source" && args?.type === "file" && Array.isArray(args.file_paths)) ||
+      (name === "download_audio" && typeof args?.destination_dir === "string");
+    if (!needsRoots) return;
+    const fileRoots = this.conn()?.fileRoots;
+    if (!fileRoots) throw new Error("No client connection to check file roots against.");
     if (name === "add_source" && args?.type === "file" && Array.isArray(args.file_paths)) {
       for (const p of args.file_paths) {
-        await this.fileRoots.assertAllowed(String(p), "Uploading a local file to NotebookLM");
+        await fileRoots.assertAllowed(String(p), "Uploading a local file to NotebookLM");
       }
     }
     if (name === "download_audio" && typeof args?.destination_dir === "string") {
-      await this.fileRoots.assertAllowed(args.destination_dir, "Saving the audio file");
+      await fileRoots.assertAllowed(args.destination_dir, "Saving the audio file");
     }
   }
 
@@ -929,7 +995,9 @@ class NotebookLMMCPServer {
         this.resourceHandlers.stopSubscriptions();
         this.taskRunner.shutdown();
         await this.toolHandlers.cleanup();
-        await this.server.close();
+        await Promise.all(
+          [...this.connections].map((c) => c.server.close().catch(() => undefined))
+        );
         log.success("✅ Shutdown complete");
         clearTimeout(watchdog);
         process.exit(0);
@@ -980,14 +1048,16 @@ class NotebookLMMCPServer {
       await startHttpTransport({
         port: options.port,
         host: options.host,
+        // A fresh MCP Server per HTTP session — one Server can only serve
+        // one transport (upstream issue #56).
         connect: async (transport) => {
-          await this.server.connect(transport);
+          await this.createConnection().server.connect(transport);
         },
       });
       log.success("✅ MCP Server connected via Streamable HTTP");
     } else {
       const transport = new StdioServerTransport();
-      await this.server.connect(transport);
+      await this.createConnection().server.connect(transport);
       log.success("✅ MCP Server connected via stdio");
     }
 

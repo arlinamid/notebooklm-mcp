@@ -180,9 +180,10 @@ function isPlaceholder(text: string): boolean {
   // real answer that merely *contains* "loading", "searching", "thinking" …
   // was treated as a placeholder forever and the call timed out.
   if (text.length < 120 && PLACEHOLDER_SNIPPETS.some((s) => lower.includes(s))) return true;
-  // Short text ending with "..." is almost certainly a loading indicator;
-  // real responses run well past 50 chars.
-  if (text.length < 50 && text.trim().endsWith("...")) return true;
+  // Short text ending with "..." or "…" (U+2026, what NotebookLM renders) is
+  // almost certainly a loading indicator; real responses run well past 50
+  // chars. Language-independent, so it also catches non-English UIs.
+  if (text.length < 50 && /(\.\.\.|…)$/.test(text.trim())) return true;
   return false;
 }
 

@@ -14,6 +14,8 @@
  * fall back to bundled Chromium if Chrome refuses to launch.
  */
 
+import os from "node:os";
+
 export type BrowserChannel = "chrome" | "chromium";
 
 /**
@@ -57,4 +59,20 @@ export function withChannel<T extends Record<string, unknown>>(
     return rest as T;
   }
   return { ...options, channel } as T;
+}
+
+/**
+ * Extra Chrome flags for environments where its sandbox cannot start
+ * (upstream issue #105: WSL2 + WSLg exits immediately; also Linux as root,
+ * e.g. in containers). Elsewhere the sandbox stays on.
+ * `NOTEBOOKLM_NO_SANDBOX=true|false` forces it either way.
+ */
+export function sandboxArgs(): string[] {
+  const forced = process.env.NOTEBOOKLM_NO_SANDBOX?.trim().toLowerCase();
+  if (forced === "true") return ["--no-sandbox"];
+  if (forced === "false") return [];
+  if (process.platform !== "linux") return [];
+  const isWsl = /microsoft/i.test(os.release()) || Boolean(process.env.WSL_DISTRO_NAME);
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  return isWsl || isRoot ? ["--no-sandbox"] : [];
 }

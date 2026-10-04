@@ -22,6 +22,7 @@ import {
   getPreferredChannel,
   isChannelFailure,
   withChannel,
+  sandboxArgs,
 } from "../browser/chromium-fallback.js";
 import {
   humanType,
@@ -938,6 +939,7 @@ export class AuthManager {
           "--disable-dev-shm-usage",
           "--no-first-run",
           "--no-default-browser-check",
+          ...sandboxArgs(),
         ],
       };
       const preferred = getPreferredChannel();

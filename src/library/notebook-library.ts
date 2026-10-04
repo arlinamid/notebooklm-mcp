@@ -116,11 +116,18 @@ export class NotebookLibrary {
    * Generate a unique ID from a string (slug format)
    */
   private generateId(name: string): string {
-    const base = name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .substring(0, 30);
+    // Unicode-aware slug: non-Latin names (Korean, Cyrillic, …) used to yield
+    // an empty id. Accents are folded ("Lánchíd" → "lanchid").
+    const base =
+      name
+        .normalize("NFKD")
+        .replace(/\p{M}+/gu, "")
+        .normalize("NFC") // recompose Hangul etc.
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, "-")
+        .replace(/^-+|-+$/g, "")
+        .substring(0, 30)
+        .replace(/-+$/, "") || "notebook";
 
     // Ensure uniqueness
     let id = base;

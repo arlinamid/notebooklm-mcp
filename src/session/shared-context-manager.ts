@@ -21,6 +21,7 @@ import {
   getPreferredChannel,
   isChannelFailure,
   withChannel,
+  sandboxArgs,
 } from "../browser/chromium-fallback.js";
 import fs from "fs";
 import path from "path";
@@ -174,6 +175,7 @@ export class SharedContextManager {
         "--disable-dev-shm-usage",
         "--no-first-run",
         "--no-default-browser-check",
+        ...sandboxArgs(),
       ],
     };
 

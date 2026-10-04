@@ -33,6 +33,30 @@ tested with SDK 1.32 client scripts against the live site. These covered tasks
 (incl. cancel and a mind-map task), cancellation, progress, roots,
 elicitation, sampling, logging, subscriptions and output-schema validation.
 
+The open bug reports against 2.0.0 in the archived upstream tracker were
+re-checked against this release:
+
+| Upstream issues | Problem | How it was checked in 3.0.0 |
+|---|---|---|
+| [#114](https://github.com/PleasePrompto/notebooklm-mcp/issues/114), [#116](https://github.com/PleasePrompto/notebooklm-mcp/issues/116) | Stale answer to an earlier question | Nonce test in fresh sessions on a notebook with long chat history: 3 of 3 correct |
+| [#48](https://github.com/PleasePrompto/notebooklm-mcp/issues/48) | Citation tooltip blocks a follow-up question | Verified live |
+| [#45](https://github.com/PleasePrompto/notebooklm-mcp/issues/45) | Startup banner printed to stdout | Banner goes to stderr; stdout carries only JSON-RPC |
+| [#76](https://github.com/PleasePrompto/notebooklm-mcp/issues/76), [#83](https://github.com/PleasePrompto/notebooklm-mcp/issues/83), [#95](https://github.com/PleasePrompto/notebooklm-mcp/issues/95), [#102](https://github.com/PleasePrompto/notebooklm-mcp/issues/102), [#107](https://github.com/PleasePrompto/notebooklm-mcp/issues/107), [#108](https://github.com/PleasePrompto/notebooklm-mcp/issues/108), [#113](https://github.com/PleasePrompto/notebooklm-mcp/issues/113) | Login detection on the new host | Fixed (new host) |
+| [#74](https://github.com/PleasePrompto/notebooklm-mcp/issues/74), [#78](https://github.com/PleasePrompto/notebooklm-mcp/issues/78), [#84](https://github.com/PleasePrompto/notebooklm-mcp/issues/84) | Thinking text returned instead of the answer | Fixed |
+| [#63](https://github.com/PleasePrompto/notebooklm-mcp/issues/63), [#85](https://github.com/PleasePrompto/notebooklm-mcp/issues/85), [#93](https://github.com/PleasePrompto/notebooklm-mcp/issues/93), [#111](https://github.com/PleasePrompto/notebooklm-mcp/issues/111) | Add-source dialog | Fixed |
+
+Not verified, and still possible:
+- orphan Chrome processes after a failed call
+  ([#94](https://github.com/PleasePrompto/notebooklm-mcp/issues/94));
+- `BROWSER_CHANNEL=chromium` login staying on about:blank
+  ([#112](https://github.com/PleasePrompto/notebooklm-mcp/issues/112));
+- answer timeouts on very large notebooks
+  ([#50](https://github.com/PleasePrompto/notebooklm-mcp/issues/50),
+  [#103](https://github.com/PleasePrompto/notebooklm-mcp/issues/103));
+- Korean UI selectors
+  ([#69](https://github.com/PleasePrompto/notebooklm-mcp/issues/69),
+  [#72](https://github.com/PleasePrompto/notebooklm-mcp/issues/72)).
+
 ### Added
 
 - **`generate_studio_artifact`** — create any Studio output: video, slide
@@ -219,6 +243,26 @@ Each feature is optional for the client; clients without it behave as before.
   checked against the answer text.
 - **Prompts capability.** `prompts/list` / `prompts/get` were advertised but
   unhandled (see Added → MCP prompts).
+- **HTTP transport with several clients**
+  ([upstream #56](https://github.com/PleasePrompto/notebooklm-mcp/issues/56)).
+  The second client got "Already connected to a transport", because one MCP
+  `Server` instance can only serve one transport. Each Streamable-HTTP
+  session now gets its own server. Browser sessions, the library and the
+  task store stay shared; resource subscriptions and the log level are per
+  session. The smoke test covers three concurrent HTTP sessions.
+- **Non-Latin notebook names** got an empty library id and could not be
+  selected, updated or removed
+  ([upstream #89](https://github.com/PleasePrompto/notebooklm-mcp/issues/89)).
+  Ids are now Unicode slugs with accents folded (`Lánchíd` → `lanchid`), and
+  fall back to `notebook`. Existing ids are unchanged.
+- **WSL2 / root on Linux**: Chrome exited immediately because its sandbox
+  cannot start there
+  ([upstream #105](https://github.com/PleasePrompto/notebooklm-mcp/issues/105)).
+  `--no-sandbox` is now added automatically under WSL and for root.
+  `NOTEBOOKLM_NO_SANDBOX=true|false` overrides the detection.
+- **Loading placeholder ending in "…"** (U+2026) was returned as the answer
+  on non-English UIs
+  ([upstream #110](https://github.com/PleasePrompto/notebooklm-mcp/issues/110)).
 - **Progress notifications** never fired: the progress token was read from
   the tool arguments instead of `params._meta.progressToken`. Both locations
   are now accepted, and notifications go to the requesting session.

@@ -110,6 +110,7 @@ Slug rules: `[a-z0-9][a-z0-9-_]{0,30}`, case-insensitive (lowercased internally)
 | `NOTEBOOKLM_FILE_ROOTS` | path list | _(unset)_ | Directories that local file paths (`add_source` files, `download_audio` destination) may use, in addition to the client's MCP roots. |
 | `NOTEBOOKLM_REQUIRE_FILE_ROOTS` | bool | `false` | Refuse local file access when neither the client nor `NOTEBOOKLM_FILE_ROOTS` provides a root. |
 | `NOTEBOOKLM_CLIENT_LOG_LEVEL` | enum | `warning` | Minimum MCP log level (`debug` … `emergency`) forwarded as `notifications/message` until the client calls `logging/setLevel`. |
+| `NOTEBOOKLM_NO_SANDBOX` | bool | _(auto)_ | Force Chrome's `--no-sandbox` on (`true`) or off (`false`). Auto: on under WSL2 and when running as root on Linux (the sandbox cannot start there), off elsewhere. |
 | `NOTEBOOKLM_SUBSCRIPTION_POLL_MS` | number | `60000` | Poll interval for subscribed `notebooklm://notebook/{uuid}/sources\|studio` resources (minimum `15000`). |
 
 ## Provenance & answer wrapping
