@@ -51,13 +51,31 @@ jobs:
       - run: npm run build
       - run: npm run test:smoke
 
+      # Re-running a tag (or tagging a version that was published by hand)
+      # must not fail: skip what already exists.
+      - name: Already on npm?
+        id: npm
+        run: |
+          spec="$(node -p "const p = require('./package.json'); p.name + '@' + p.version")"
+          if npm view "$spec" version > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$spec is already on npm — skipping npm publish"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to npm
+        if: steps.npm.outputs.exists != 'true'
         run: npm publish --access public --provenance
 
       - name: GitHub release from the CHANGELOG section
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "::notice::Release $GITHUB_REF_NAME already exists — skipping"
+            exit 0
+          fi
           version="${GITHUB_REF_NAME#v}"
           node scripts/release-notes.mjs "$version" > release-notes.md
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md --verify-tag
