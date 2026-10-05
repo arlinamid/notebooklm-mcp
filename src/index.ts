@@ -954,6 +954,12 @@ class NotebookLMMCPServer {
             break;
           }
 
+          case "configure_output_language":
+            result = await this.toolHandlers.handleConfigureOutputLanguage(
+              args as { language?: string }
+            );
+            break;
+
           case "download_studio_artifact":
             result = await this.toolHandlers.handleDownloadStudioArtifact(
               args as unknown as Parameters<ToolHandlers["handleDownloadStudioArtifact"]>[0]

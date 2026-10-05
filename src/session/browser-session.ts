@@ -93,6 +93,7 @@ import {
 import { notebookUuidFromUrl } from "../notebooklm/account-notebooks.js";
 import { RpcError } from "../notebooklm/rpc.js";
 import { addSourcesRpc, configureChatRpc, readUsageRpc } from "../notebooklm/rpc-ops.js";
+import { generateStudioRpc } from "../notebooklm/studio-rpc.js";
 import { abortable, reportProgress } from "../utils/request-context.js";
 
 export interface StudioDownloadResult {
@@ -743,6 +744,16 @@ export class BrowserSession {
    */
   async generateStudio(options: GenerateStudioOptions): Promise<GenerateStudioResult> {
     return this.onPage("generate_studio_artifact", async (page) => {
+      const viaRpc = await this.tryRpc("generate_studio_artifact", () =>
+        generateStudioRpc(page, this.notebookId(), options)
+      );
+      if (viaRpc) {
+        // The Studio panel does not learn about generations started outside
+        // the UI; reload so listings (and task polling) see the new item.
+        await this.reloadPage(page, viaRpc.sourceCount);
+        const { sourceCount: _count, ...result } = viaRpc;
+        return result;
+      }
       await dismissPromoDialogs(page);
       return await generateStudioArtifact(page, options);
     });

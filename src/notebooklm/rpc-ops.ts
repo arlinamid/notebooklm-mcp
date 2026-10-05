@@ -315,3 +315,42 @@ async function newSourceIds(
   }
   return [];
 }
+
+// ---------------------------------------------------------------------------
+// Account output language (Settings → Output language)
+
+const RPC_SETTINGS = "ZwVcOc";
+const RPC_PREFERENCES = "hT54vc";
+
+/**
+ * The account's output-language override as a code ("hu"), or null when it
+ * is "Default" — NotebookLM then answers and generates in the UI language,
+ * which for this server's browser is English.
+ */
+export async function getOutputLanguageRpc(page: Page): Promise<string | null> {
+  const res = await callRpc<unknown[]>(page, RPC_SETTINGS, [USAGE_HEADER], "/");
+  const settings = at(res, 0, 2);
+  if (!Array.isArray(settings)) throw new RpcError("unexpected settings response", RPC_SETTINGS);
+  const code = at(settings, 4, 0);
+  return typeof code === "string" && code ? code : null;
+}
+
+/** Set (code) or clear (null → "Default") the override, verified by reading it back. */
+export async function setOutputLanguageRpc(
+  page: Page,
+  code: string | null
+): Promise<string | null> {
+  await callRpc(
+    page,
+    RPC_PREFERENCES,
+    [[[null, [[null, null, null, null, [code ?? ""]]]]], USAGE_HEADER],
+    "/"
+  );
+  const now = await getOutputLanguageRpc(page);
+  if (now !== code) {
+    throw new Error(
+      `Output language was not applied (asked ${code ?? "Default"}, got ${now ?? "Default"}).`
+    );
+  }
+  return now;
+}

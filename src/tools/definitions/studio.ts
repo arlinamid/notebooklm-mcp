@@ -113,8 +113,9 @@ export const generateStudioArtifactTool: Tool = {
       language: {
         type: "string",
         description:
-          'Output language by the name NotebookLM lists, e.g. "English", "magyar", "Deutsch" ' +
-          "(all types except video). Defaults to the notebook's output language.",
+          'Output language: a code ("hu"), the name NotebookLM lists ("magyar") or the ' +
+          'English name ("Hungarian"); all types except video. Defaults to the account\'s ' +
+          "output language (see `configure_output_language`).",
       },
       sources: {
         type: "array",
@@ -189,6 +190,36 @@ export const getUsageTool: Tool = {
   annotations: {
     title: "Get AI usage & limits",
     readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+};
+
+export const configureOutputLanguageTool: Tool = {
+  name: "configure_output_language",
+  description:
+    "Read or set the account's output language (NotebookLM Settings → Output language). It " +
+    "decides the language of chat answers and of Studio outputs that do not name a " +
+    "`language` — for every notebook of the account.\n\n" +
+    'Omit `language` to read it. Pass a code ("hu"), the name NotebookLM lists ("magyar") ' +
+    'or the English name ("Hungarian") to set it, or "default" to remove the override. ' +
+    'With "Default", NotebookLM uses its interface language — and this server runs ' +
+    "NotebookLM in English, so answers and Studio outputs come out in English. If the " +
+    "user expects another language, set it here (ask the user first: it changes their " +
+    "account setting, also in the NotebookLM web app).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      language: {
+        type: "string",
+        description: 'Language to set; "default" removes the override. Omit to read.',
+      },
+    },
+  },
+  annotations: {
+    title: "Output language",
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
@@ -473,4 +504,5 @@ export const studioTools: Tool[] = [
   downloadStudioArtifactTool,
   getUsageTool,
   configureChatTool,
+  configureOutputLanguageTool,
 ];
