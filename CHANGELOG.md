@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.2.0] - 2026-10-05
 
 ### Added
 
@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Documentation brought up to date: `docs/tools.md` covers all 34 tools (13
+  were missing; parameter tables generated from the tool schemas) and fixes
+  the outdated `ask_question`, `add_source`, `generate_audio` and
+  `download_audio` sections; new troubleshooting entries (wrong output
+  language, sign-in confirmation, failure replies, RPC kill switch, several
+  clients); usage-guide recipes for Studio downloads and output language;
+  server instructions no longer claim YouTube / file sources are missing.
 - `ask_question` asks through NotebookLM's streamed query endpoint instead of
   typing into the chat box and watching the page for the answer: 10–15 s
   instead of 20–25 s, no answer-detection heuristics, and `sources` scoping

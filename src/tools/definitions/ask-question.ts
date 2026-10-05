@@ -165,7 +165,7 @@ export const askQuestionTool: Tool = {
         description:
           "Answer only from these sources — each entry is a source title (exact or a unique " +
           "substring) or source id (see `list_sources`). The notebook's own source selection " +
-          "is restored after the answer. Omit to use the current selection (normally all).",
+          "is left as it was. Omit to use all sources.",
       },
       show_browser: {
         type: "boolean",

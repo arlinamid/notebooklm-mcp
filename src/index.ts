@@ -125,9 +125,9 @@ clears chat history (same id), \`close_session\` ends a session.
 
 ## Source ingestion (multi-source)
 
-Call \`add_source\` once per source — text snippets and URLs are supported.
-NotebookLM crawls/indexes each source asynchronously; new sources are
-typically queryable within 5–30 seconds after \`add_source\` succeeds.
+Call \`add_source\` per source type — URLs (several per call), YouTube,
+pasted text and local files. URLs, videos and text return once NotebookLM
+has processed them, with the new \`sourceIds\`.
 
 ## Audio Overview (async chain — important)
 
@@ -137,12 +137,14 @@ a generation was already running, or \`"ready"\` if one already existed).
 Generation typically takes 2–10 minutes.
 
 To complete the workflow, poll \`get_audio_status\` every ~30 s. When it
-returns \`status: "ready"\`, call \`download_audio\` with an absolute
-\`destination_dir\` to save the file. Calling \`download_audio\` before
-\`ready\` will surface a clear error.
+returns \`status: "ready"\`, call \`download_audio\` (or
+\`download_studio_artifact\`) with an absolute \`destination_dir\` to save
+the file. Calling \`download_audio\` before \`ready\` will surface a clear
+error.
 
 For synchronous behaviour pass \`wait_for_completion: true\` to
-\`generate_audio\` (legacy mode — blocks for up to \`timeout_ms\`).
+\`generate_audio\` (waits up to \`timeout_ms\`; the session stays usable
+for other calls meanwhile).
 
 ## Constraints
 
@@ -151,18 +153,20 @@ For synchronous behaviour pass \`wait_for_completion: true\` to
   rotates accounts. Studio jobs can use "Generate later"
   (\`generate_later: true\`) to stay outside the current window.
 - Session timeout: ~15 min idle (see \`get_health.session_timeout\`).
-- File / YouTube / Drive source uploads are not yet implemented.
+- Google Drive sources are not implemented.
 
 ## Studio
 
 \`generate_studio_artifact\` creates any Studio output (video, slide_deck,
 mind_map, report, flashcards, quiz, infographic, data_table, audio).
 Poll \`list_studio_artifacts\` until the item's status is \`ready\`
-(\`scheduled\` = queued via Generate later).
+(\`scheduled\` = queued via Generate later), then save it with
+\`download_studio_artifact\` (audio, video, infographic, slides as PDF or
+PPTX, report, data table, quiz, flashcards, mind map).
 
 Every Studio type except \`report\` (and \`generate_audio\`) accepts
 \`sources\` to work from a subset of sources; \`ask_question\` accepts
-\`sources\` too (the notebook's own selection is restored afterwards).
+\`sources\` too (the notebook's own selection is left as it was).
 \`list_sources\` gives ids for duplicate titles.
 
 \`save_answer_as_note\` pins a chat answer as a note and
@@ -174,6 +178,15 @@ instruction** (NotebookLM "Configure Chat": goal, custom prompt, response
 length). It shapes every later \`ask_question\` answer on that notebook —
 read it before changing it, and restore it afterwards if the change was
 only meant for one task.
+
+## Output language
+
+Answers and Studio outputs follow the account's output language
+(\`configure_output_language\`). If it is "Default", NotebookLM uses its
+interface language — English for this server. When the user expects another
+language and gets English, read the setting and offer to set it (it is an
+account-wide setting, also in the web app). For one Studio output, pass
+\`language\` instead.
 `;
 
 /**

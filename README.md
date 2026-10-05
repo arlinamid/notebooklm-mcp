@@ -216,26 +216,26 @@ When several MCP clients each start the server on the same data directory (for e
 
 ## Tools
 
-All 31 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
+All 34 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
 
 ### Q&A
 
 | Tool | Purpose |
 |---|---|
-| `ask_question` | Ask a question against a notebook. Supports session reuse, citation extraction (`source_format`), `sources` (answer from a subset of sources; the notebook's own selection is restored afterwards) and per-call browser overrides. Returns answer + `_provenance` envelope. |
+| `ask_question` | Ask a question against a notebook. Uses NotebookLM's streamed query endpoint and continues the notebook's conversation (follow-ups keep context; the Q&A shows in NotebookLM's chat). Answers are Markdown with `[N]` citation markers. Supports session reuse, citation formats (`source_format`), `sources` (answer from a subset; the notebook's own selection is untouched) and per-call browser overrides. Returns answer + `_provenance` envelope. |
 
 ### Sources & Studio
 
 | Tool | Purpose |
 |---|---|
-| `add_source` | Add sources: `url` (web crawl, several URLs per call), `youtube` (transcript), `text` (paste), `file` (`file_paths`: pdf, txt, md, docx, audio, images …). Returns source counts before/after. |
+| `add_source` | Add sources: `url` (web crawl, several URLs per call), `youtube` (transcript), `text` (paste), `file` (`file_paths`: pdf, txt, md, docx, audio, images …). URLs, videos and text go through NotebookLM's data API and the call waits until they are processed; returns source counts and the new `sourceIds`. |
 | `delete_source` | **Permanently** remove a source (by id or title). Asks the user for approval — see [Approvals](#approvals-for-destructive-actions). Success only after NotebookLM acknowledged it. |
 | `delete_studio_artifact` | **Permanently** delete a Studio output or note (by id or title, optional `kind`). Asks the user for approval. |
 | `generate_audio` | Generate an Audio Overview. Optional `custom_prompt`, `format` (`deep_dive`/`brief`/`critique`/`debate`), `length`, `sources`, `generate_later`, `wait_for_completion`, `timeout_ms` (default 600 000 ms). |
 | `get_audio_status` | Non-blocking audio state: `ready` / `in_progress` / `not_started`. |
 | `download_audio` | Save the most recent Audio Overview (`.m4a`, original title as file name) to `destination_dir`. |
 | `download_studio_artifact` | Save any finished Studio output: audio `.m4a`, video `.mp4`, infographic `.png`, slide deck `.pdf`/`.pptx`, report `.md`, data table `.csv`, quiz/flashcards `.md`/`.json`, mind map `.json`. Pick by `artifact_id` or newest of a `type`. Uses NotebookLM's data API, not the menus. |
-| `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template`, and `sources` (work from a subset of sources). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. |
+| `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template`, and `sources` (work from a subset of sources). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. Audio, video, infographic and slide deck start through the data API (returns `artifactId`); `language` takes a code, the listed name or the English name and defaults to the account's output language. |
 | `list_studio_artifacts` | Studio library incl. notes: id, type, title, details, status (`ready` / `generating` / `scheduled`). |
 | `list_sources` | Sources with stable id, title, kind and chat selection. |
 | `save_answer_as_note` | Pin a chat answer (latest, or by `question`) as a note; the note is checked against the answer text. |
@@ -345,7 +345,7 @@ Profiles trim the tool list to keep host-agent context budgets in check.
 | Profile | Tools |
 |---|---|
 | `minimal` | `ask_question`, `get_health`, `list_notebooks`, `select_notebook`, `get_notebook` |
-| `standard` | `minimal` + `setup_auth`, `list_sessions`, `add_notebook`, `update_notebook`, `search_notebooks` |
+| `standard` | `minimal` + `setup_auth`, `list_sessions`, `add_notebook`, `import_account_notebooks`, `update_notebook`, `search_notebooks` |
 | `full` (default) | every tool registered above |
 
 Set the profile persistently:

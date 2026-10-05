@@ -1,11 +1,13 @@
 # Usage Guide
 
-Practical end-to-end walkthroughs against v2.0.0. Each section is a self-contained recipe with the exact tool calls / curl commands.
+Practical end-to-end walkthroughs for v3.2. Each section is a self-contained recipe with the exact tool calls / curl commands.
 
 - [First-time setup](#first-time-setup)
 - [Multi-turn session pattern](#multi-turn-session-pattern)
 - [Citations workflow](#citations-workflow)
 - [Audio Overview generation + download](#audio-overview-generation--download)
+- [Studio outputs: generate, wait, download](#studio-outputs-generate-wait-download)
+- [Output language](#output-language)
 - [Multi-account switching](#multi-account-switching)
 - [HTTP transport for n8n / Zapier](#http-transport-for-n8n--zapier)
 
@@ -39,13 +41,22 @@ Expect `"authenticated": true`.
 
 ### 3. Add a notebook to the local library
 
-Get a NotebookLM share-URL: open the notebook in `notebooklm.google.com`, click _Share → Anyone with the link → Copy link_. Then:
+Notebooks of the signed-in account can be imported in one go — no share links needed. Preview first, then import all of them or a selection:
+
+```json
+{ "name": "import_account_notebooks", "arguments": { "dry_run": true, "scope": "all" } }
+{ "name": "import_account_notebooks", "arguments": { "notebook_ids": ["<uuid from the dry run>"] } }
+```
+
+Imported entries get a placeholder description; fill it in with `update_notebook`.
+
+For a notebook of another account, get a share-URL: open it on `notebook.google.com`, click _Share → Anyone with the link → Copy link_. Then:
 
 ```json
 {
   "name": "add_notebook",
   "arguments": {
-    "url": "https://notebooklm.google.com/notebook/abcd-efgh",
+    "url": "https://notebook.google.com/notebook/abcd-efgh",
     "name": "n8n Documentation",
     "description": "n8n core docs + builtin nodes",
     "topics": ["workflow automation", "n8n", "node configuration"],
@@ -158,36 +169,77 @@ Answer text is left untouched. Citations are returned only as a structured array
 
 ## Audio Overview generation + download
 
-Two-step workflow.
+Three steps: start, wait, download.
 
-### 1. Generate
+### 1. Start
 
 ```json
 {
   "name": "generate_audio",
-  "arguments": {
-    "custom_prompt": "Focus on the migration steps and breaking changes",
-    "timeout_ms": 900000
-  }
+  "arguments": { "custom_prompt": "Focus on the migration steps and breaking changes", "format": "brief" }
 }
 ```
 
-Generation can take several minutes — keep `timeout_ms` generous. The default is 600 000 ms (10 min).
+This returns at once with `status: "started"`. Rendering takes 2–10 minutes on Google's side; meanwhile the session stays usable for questions. (`wait_for_completion: true` waits inside the call instead, up to `timeout_ms`.)
 
-### 2. Download
+### 2. Wait
+
+Poll every ~30 s until `status` is `ready`:
+
+```json
+{ "name": "get_audio_status", "arguments": {} }
+```
+
+### 3. Download
+
+```json
+{ "name": "download_audio", "arguments": { "destination_dir": "/Users/me/Downloads/notebooklm" } }
+```
+
+The result has the absolute `filePath` of the `.m4a`. If you call `download_audio` before any Audio Overview exists, it returns an error pointing at `generate_audio`.
+
+---
+
+## Studio outputs: generate, wait, download
+
+Any Studio type works the same way — here an infographic in Hungarian, square, from one source:
 
 ```json
 {
-  "name": "download_audio",
+  "name": "generate_studio_artifact",
   "arguments": {
-    "destination_dir": "/Users/me/Downloads/notebooklm"
+    "type": "infographic", "prompt": "The city's bridges at a glance",
+    "orientation": "square", "detail": "concise", "style": "professional",
+    "language": "hu", "sources": ["Chain Bridge – Wikipedia"]
   }
 }
 ```
 
-Result includes the absolute `file_path` and size in bytes.
+The result carries the new item's `artifactId`. Poll `list_studio_artifacts` until that item is `ready`, then save it:
 
-If you call `download_audio` before any Audio Overview has been generated, the call returns an error pointing at `generate_audio`. Run them in order, in the same notebook.
+```json
+{ "name": "download_studio_artifact", "arguments": { "artifact_id": "<artifactId>", "destination_dir": "/Users/me/Downloads/notebooklm" } }
+```
+
+Slide decks download as PDF (`format: "pptx"` for PowerPoint), reports as Markdown, data tables as CSV, quizzes and flashcards as Markdown or JSON, mind maps as JSON. Without `artifact_id`, `type` picks the newest finished item of that type.
+
+---
+
+## Output language
+
+Answers and Studio outputs follow the **account's** output language. Check it:
+
+```json
+{ "name": "configure_output_language", "arguments": {} }
+```
+
+`language: null` means *Default*: NotebookLM then uses its interface language, which is English for this server — a Hungarian user would get English. Set it (it is an account setting, also in the web app, so ask the user first):
+
+```json
+{ "name": "configure_output_language", "arguments": { "language": "magyar" } }
+```
+
+A single Studio output can override it with `language` (`hu`, `magyar` or `Hungarian` all work).
 
 ---
 
@@ -208,7 +260,9 @@ Each account gets its own Chrome profile under `<dataDir>/accounts/<name>/`. The
 Use cases:
 
 - Working notebooks on a corporate Google account, side-projects on a personal one.
-- Rotating between two free-tier accounts to extend the daily quota.
+- Rotating between two free-tier accounts when one account's usage window is exhausted (`get_usage`).
+
+Several MCP clients on the **same** account (e.g. Claude Desktop's chat and Code tab) need nothing special: the first server instance owns the browser and the others forward to it — see the README, "Several clients on one account".
 
 There is no shared library between accounts — each account has its own `library.json`. If you want the same library across accounts, copy `library.json` between the two `accounts/<name>/` directories manually.
 

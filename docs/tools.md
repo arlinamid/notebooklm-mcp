@@ -1,28 +1,28 @@
 # Tools
 
-Every tool registered in v2.0.0, with parameter schema, an example invocation (MCP `tools/call` arguments shape), and the expected return shape. New v2 tools are flagged.
+Every tool the server registers (34 under the `full` profile), with its parameters, an example where useful, and the return shape. Parameter tables are generated from the live tool schemas.
 
 The server returns each tool result wrapped as `{ "success": true, "data": <object> }` (or `{ "success": false, "error": <string> }`). The shapes below describe the inner `data`.
+
+Many operations use NotebookLM's own data API (`batchexecute` RPCs called from inside the signed-in tab) and fall back to driving the web UI when that API changes. `NOTEBOOKLM_USE_RPC=false` forces the UI path everywhere both exist.
 
 ---
 
 ## ask_question
 
-Ask a question against a notebook. Reuses an existing browser session when `session_id` is supplied. Citation extraction reads the DOM citation panel after the answer settles.
+Ask a question against a notebook. The question goes to NotebookLM's streamed query endpoint and continues the notebook's server conversation with its history, so follow-ups keep context and the Q&A appears in NotebookLM's own chat. If that endpoint fails, the question is typed into the chat box instead. Pass `session_id` to keep using the same browser tab.
 
-**v2 additions**: `source_format`, `_provenance` envelope on the result, AI-generated answer prefix.
+Answers are **Markdown** (e.g. `**bold**`) with `[N]` citation markers; ranges such as `[1-3]` are expanded to `[1][2][3]`. `sources` limits the answer to some sources without changing the notebook's own source selection.
 
 ### Parameters
 
 | Name | Type | Required | Notes |
 |---|---|---|---|
-| `question` | string | yes | The question to ask. |
-| `session_id` | string | no | Reuse an existing session for context. Omit to create a new one. |
-| `notebook_id` | string | no | Library notebook ID. Falls back to active notebook. |
-| `notebook_url` | string | no | Ad-hoc NotebookLM URL. Overrides `notebook_id`. |
-| `source_format` | `none` \| `inline` \| `footnotes` \| `json` | no | Citation rendering. Default `none`. |
-| `show_browser` | bool | no | Shorthand for `browser_options.show`. |
-| `browser_options` | object | no | Per-call browser overrides — see [`docs/configuration.md`](./configuration.md#per-call-browser-options). |
+| `question` | string | yes | The question to ask NotebookLM. Plain natural language; can be multi-line. Gemini responds grounded on the notebook's sources. |
+| `source_format` | `none` / `inline` / `footnotes` / `json` | no | How citations are returned alongside the answer: • `none` (default) — raw answer, no citation extraction (fastest) • `footnotes` — answer plus a `Sources:` block, e.g. `[1] DocName — "excerpt…"` • `inline` — `[N]` markers in the answer are replaced with `[N] (DocName: "excerpt…")` • `json` — answer text untouched; structured `sources` array on the response Use `none` for snappy chat. Use `json` when downstream code needs to process citations programmatically. Use `footnotes`/`inline` when showing the answer to a human reader. |
+| `sources` | string[] | no | Answer only from these sources — each entry is a source title (exact or a unique substring) or source id (see `list_sources`). The notebook's own source selection is restored after the answer. Omit to use the current selection (normally all). |
+| `browser_options` | object | no | Optional browser behavior settings. Claude can control everything: visibility, typing speed, stealth mode, timeouts. Useful for debugging or fine-tuning. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
 
 ### Example
 
@@ -32,7 +32,8 @@ Ask a question against a notebook. Reuses an existing browser session when `sess
   "arguments": {
     "question": "How does the OAuth refresh token rotation work?",
     "notebook_id": "auth-notebook",
-    "source_format": "footnotes"
+    "source_format": "footnotes",
+    "sources": ["auth-spec.pdf"]
   }
 }
 ```
@@ -43,46 +44,39 @@ Ask a question against a notebook. Reuses an existing browser session when `sess
 {
   "status": "success",
   "question": "How does the OAuth refresh token rotation work?",
-  "answer": "[AI-GENERATED ...] The refresh token is rotated each ...\n\nSources:\n[1] auth-spec.pdf — ...",
-  "session_id": "ses_…",
-  "notebook_url": "https://notebooklm.google.com/notebook/…",
-  "session_info": {
-    "age_seconds": 12,
-    "message_count": 3,
-    "last_activity": "2026-04-30T12:00:00.000Z"
-  },
+  "answer": "[AI-GENERATED …]\n\nThe refresh token is **rotated** on every use [1].\n\nSources:\n[1] auth-spec.pdf — \"Refresh tokens MUST be rotated…\"",
+  "session_id": "a1b2c3d4",
+  "notebook_url": "https://notebook.google.com/notebook/…",
+  "session_info": { "age_seconds": 12, "message_count": 3, "last_activity": 1791190000000 },
   "_provenance": {
-    "provider": "google-notebooklm",
-    "model": "gemini-2.5",
-    "via": "chrome-automation",
-    "grounding": "user-uploaded-documents",
-    "ai_generated": true
+    "provider": "google-notebooklm", "model": "gemini-2.5", "via": "chrome-automation",
+    "grounding": "user-uploaded-documents", "ai_generated": true
   },
   "source_format": "footnotes",
   "sources": [
-    { "index": 1, "title": "auth-spec.pdf", "excerpt": "Refresh tokens MUST be rotated…" }
-  ]
+    { "marker": "[1]", "number": 1, "sourceName": "auth-spec.pdf", "sourceText": "Refresh tokens MUST be rotated…" }
+  ],
+  "scoped_sources": ["auth-spec.pdf"]
 }
 ```
 
-`sources` is omitted when `source_format=none` or when no citations were found.
+`sources` is omitted when `source_format` is `none` or nothing was cited; `scoped_sources` only appears when the call passed `sources`. NotebookLM's canned failure reply ("I'm having trouble responding right now.") is reported as an error.
 
 ---
 
-## add_source — new in v2
+## add_source
 
-Add a source to a notebook. v2 supports `type=url` (web crawl) and `type=text` (paste). File / YouTube / Drive uploads are not supported.
+Add a source to a notebook: a website (`url`), a YouTube video (`youtube`), pasted text (`text`) or local files (`file`). URLs, videos and text are added through NotebookLM's data API and the call waits (up to 90 s) until NotebookLM has processed them; files are uploaded through the Add-source dialog. An ambiguous reply is reconciled against the notebook before anything is retried, so a source is never added twice.
 
 ### Parameters
 
 | Name | Type | Required | Notes |
 |---|---|---|---|
-| `type` | `url` \| `text` | yes | |
-| `content` | string | yes | URL when `type=url`, raw text when `type=text`. |
-| `title` | string | no | Optional display title. NotebookLM picks a default. |
-| `session_id` | string | no | Reuse an existing browser session. |
-| `notebook_id` | string | no | Library notebook ID. |
-| `notebook_url` | string | no | Ad-hoc URL. Overrides `notebook_id`. |
+| `type` | `url` / `youtube` / `text` / `file` | yes | `url` crawls a website, `youtube` imports a video transcript, `text` ingests `content` verbatim, `file` uploads `file_paths`. |
+| `content` | string | no | When `type=url`/`youtube`: fully-qualified URL(s) (https://…), several separated by spaces or new lines. When `type=text`: the raw text body (up to NotebookLM's per-source word limit). Not used for `file`. |
+| `file_paths` | string[] | no | `type=file` only: absolute paths of local files to upload. |
+| `title` | string | no | Display title shown in the source list. Optional — NotebookLM picks a sensible default (page title for URLs, first line for text). For text sources, supplying a title is recommended for later identification. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
 
 ### Example
 
@@ -91,8 +85,7 @@ Add a source to a notebook. v2 supports `type=url` (web crawl) and `type=text` (
   "name": "add_source",
   "arguments": {
     "type": "url",
-    "content": "https://docs.n8n.io/code/builtin/json-jmespath/",
-    "title": "n8n JMESPath builtin"
+    "content": "https://docs.n8n.io/code/builtin/json-jmespath/"
   }
 }
 ```
@@ -101,92 +94,65 @@ Add a source to a notebook. v2 supports `type=url` (web crawl) and `type=text` (
 
 ```jsonc
 {
-  "status": "success",
-  "type": "url",
-  "title": "n8n JMESPath builtin",
-  "source_count_before": 12,
-  "source_count_after": 13,
-  "added": true
+  "result": {
+    "success": true,
+    "type": "url",
+    "sourceCountBefore": 12,
+    "sourceCountAfter": 13,
+    "sourceIds": ["ee113946-…"],     // data-API path; usable in `sources` arguments
+    "message": "Added: n8n JMESPath builtin"
+  }
 }
 ```
 
+Local file paths must lie inside the client's roots or `NOTEBOOKLM_FILE_ROOTS`.
+
 ---
 
-## generate_audio — new in v2
+## generate_audio
 
-Generate a podcast-style Audio Overview for a notebook. Resolves when the audio element is ready.
+Start a podcast-style Audio Overview. **Non-blocking by default:** returns `status: "started"` at once (or `in_progress` when a render is already running, `ready` when an Audio Overview already exists) — poll `get_audio_status` or `list_studio_artifacts`, then save it with `download_audio` / `download_studio_artifact`. With `wait_for_completion: true` the call waits up to `timeout_ms`, polling in short steps so other calls on the session can run meanwhile. To create another audio when one already exists, use `generate_studio_artifact` with `type: "audio"`.
 
 ### Parameters
 
 | Name | Type | Required | Notes |
 |---|---|---|---|
-| `custom_prompt` | string | no | Optional focus prompt. |
-| `timeout_ms` | number | no | Wait ceiling. Default `600000`. |
-| `session_id` | string | no | |
-| `notebook_id` | string | no | |
-| `notebook_url` | string | no | |
-
-### Example
-
-```json
-{
-  "name": "generate_audio",
-  "arguments": {
-    "custom_prompt": "Focus on the migration strategy",
-    "timeout_ms": 900000
-  }
-}
-```
+| `custom_prompt` | string | no | Optional focus prompt for the Audio Overview, e.g. "Focus on the API authentication flow and skip pricing". Passed into the NotebookLM "Customize" sub-dialog before generation starts. |
+| `format` | `deep_dive` / `brief` / `critique` / `debate` | no | Optional episode format (2026-09 Studio dialog). `deep_dive` = two-host conversation (NotebookLM default), `brief` = bite-sized overview, `critique` = expert review of the sources, `debate` = two hosts debating. |
+| `length` | `short` / `default` / `long` | no | Optional episode length. `long` is only offered on some accounts; when unavailable the NotebookLM default is kept. |
+| `sources` | string[] | no | Restrict the episode to these sources (title, unique title substring, or source id). Omit to use all sources. |
+| `generate_later` | boolean | no | Use NotebookLM's "Generate later" queue instead of "Generate now": does not count against the current limit window, ready within hours. Default false. |
+| `wait_for_completion` | boolean | no | If true, block until the audio tile is ready (up to `timeout_ms`). Default false — return immediately and let the caller poll `get_audio_status`. |
+| `timeout_ms` | number | no | Only relevant when `wait_for_completion=true`. Maximum wait for the audio tile to appear. Default 600 000 (10 min). |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
 
 ### Return shape
 
 ```jsonc
-{
-  "status": "success",
-  "ready": true,
-  "duration_ms": 412000
-}
+{ "result": { "status": "started", "message": "Audio Overview generation started. It typically takes 2–10 minutes…" } }
+// status: "started" | "in_progress" | "ready" (+ "alreadyExisted": true) | "error"
 ```
-
-Pair with `download_audio` (or `download_studio_artifact`) to persist the file.
 
 ---
 
-## download_audio — new in v2
+## download_audio
 
-Download the most recent Audio Overview to disk.
+Save the most recent Audio Overview to disk as `.m4a`, named after its title. For any other Studio output — or a specific audio by id — use `download_studio_artifact`.
 
 ### Parameters
 
 | Name | Type | Required | Notes |
 |---|---|---|---|
-| `destination_dir` | string | yes | Absolute directory. Created if missing. |
-| `session_id` | string | no | |
-| `notebook_id` | string | no | |
-| `notebook_url` | string | no | |
-
-### Example
-
-```json
-{
-  "name": "download_audio",
-  "arguments": {
-    "destination_dir": "/Users/me/Downloads/notebooklm"
-  }
-}
-```
+| `destination_dir` | string | yes | Absolute directory path where the file is saved (created if missing). Example: `/Users/jane/Downloads/notebooklm` or `/tmp/audio`. Relative paths are NOT recommended — the server may run from a different working directory than the caller. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
 
 ### Return shape
 
 ```jsonc
-{
-  "status": "success",
-  "file_path": "/Users/me/Downloads/notebooklm/overview-2026-04-30.wav",
-  "size_bytes": 9_412_000
-}
+{ "result": { "success": true, "filePath": "/Users/me/Downloads/notebooklm/Chain_Bridge.m4a" } }
 ```
 
-Run `generate_audio` first if no Audio Overview exists yet.
+The directory must lie inside the client's roots or `NOTEBOOKLM_FILE_ROOTS`.
 
 ---
 
@@ -228,6 +194,282 @@ The file is named after the item's title; an existing file is kept and the new o
     "format": "pdf"
   }
 }
+```
+
+---
+
+## generate_studio_artifact
+
+Start any Studio output: audio, video, slide deck, mind map, report, flashcards, quiz, infographic or data table. Audio, video, infographic and slide deck are started through NotebookLM's data API (a few seconds, no dialog) whenever every option has a known code and a language is known — the given `language`, else the account's output language (`configure_output_language`). Everything else, "Generate later", and an account on *Default* language use the customise dialog. Generation continues on Google's side; poll `list_studio_artifacts`, then save the result with `download_studio_artifact`.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `type` | `video` / `slide_deck` / `mind_map` / `report` / `flashcards` / `quiz` / `infographic` / `data_table` / `audio` | yes | Studio output type. |
+| `prompt` | string | no | Optional focus / description, e.g. "A deck for beginners in a playful style". Ignored for types whose dialog has no free-text field (e.g. report templates). |
+| `generate_later` | boolean | no | Use "Generate later" (queued, does not use the current limit window). Default false. |
+| `format` | string | no | Per type — audio: deep_dive / brief / critique / debate; video: cinematic / short / explainer; slide_deck: detailed / presenter; report: interactive / document. |
+| `length` | `short` / `default` / `long` | no | audio, slide_deck. `long` only where offered. |
+| `count` | `fewer` / `standard` / `more` | no | flashcards, quiz: number of cards / questions. |
+| `difficulty` | `easy` / `medium` / `hard` | no | flashcards, quiz. |
+| `include_images` | boolean | no | flashcards: include images (default true). |
+| `orientation` | `landscape` / `portrait` / `square` | no | infographic. |
+| `detail` | `concise` / `standard` / `detailed` | no | infographic level of detail (`detailed` is beta). |
+| `style` | `auto` / `sketch_note` / `professional` / `bento_grid` / `editorial` / `instructional` / `bricks` / `clay` / `anime` / `kawaii` / `scientific` | no | infographic visual style. |
+| `language` | string | no | Output language: a code ("hu"), the name NotebookLM lists ("magyar") or the English name ("Hungarian"); all types except video. Defaults to the account's output language (see `configure_output_language`). |
+| `sources` | string[] | no | Restrict the output to these sources — each entry is a source title (exact or a unique substring) or source id. Omit to use all sources. Very useful in multi-source notebooks. Not available for `report`. |
+| `template` | `learning_overview` / `create_your_own` / `briefing_doc` / `study_guide` / `blog_post` | no | report only. `learning_overview` = interactive report; the others are document reports. A `prompt` is appended to the template's built-in instructions; `create_your_own` uses the prompt alone (required). Default: learning_overview, or create_your_own when `format: document` and a prompt is given. |
+| `ask_options` | boolean | no | Show the user a form to choose the options (needs client elicitation support; otherwise the given arguments are used). Default false. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "result": {
+    "status": "started",            // | "queued" (Generate later) | "error"
+    "message": "slide_deck generation started — poll list_studio_artifacts (id 9d72…).",
+    "artifactId": "9d728bd3-…",     // data-API path; matches list_studio_artifacts
+    "usagePercent": null,           // dialog path: the usage meter shown in the dialog
+    "sources": ["Chain Bridge – Wikipedia"]  // when `sources` was given
+  }
+}
+```
+
+`language` takes a code (`hu`), the name NotebookLM lists (`magyar`) or the English name (`Hungarian`). An unknown name is rejected with the list the dialog offers.
+
+---
+
+## list_studio_artifacts
+
+List the notebook's Studio library — generated outputs and notes — with their status. Read-only; use it to poll a running generation.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "artifacts": [
+    { "id": "fc7cfe01-…", "type": "infographic", "title": "Budapest's bridges",
+      "details": "11 sources · 4m ago", "status": "ready" }   // | "generating" | "scheduled"
+  ]
+}
+```
+
+---
+
+## list_sources
+
+List the notebook's sources with their ids and whether the chat currently uses each one (`selected`). Use the ids in `sources` arguments when titles repeat. Read-only.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "count": 11,
+  "sources": [
+    { "id": "c33daf52-…", "title": "Chain Bridge – Wikipedia", "kind": "web", "selected": true }
+  ]
+}
+```
+
+---
+
+## delete_source
+
+**Permanently** remove one source (by id, exact title or unique title substring). The server resolves the target and asks the user for approval through MCP elicitation; clients without elicitation must pass `confirm: true`, set only after the user approved this deletion. Counts as done only after NotebookLM acknowledged it.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `source` | string | yes | Source id, exact title, or unique title substring. |
+| `confirm` | boolean | no | Only used when the MCP client cannot show an approval prompt (no elicitation support): then it must be true, set only after explicit user approval. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{ "result": { "deleted": "Old report", "kind": "source" } }
+```
+
+---
+
+## delete_studio_artifact
+
+**Permanently** remove a Studio output or a note, with the same approval flow as `delete_source`. Use the id from `list_studio_artifacts` when titles repeat.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `title` | string | yes | Entry id from `list_studio_artifacts` (required to tell identical titles apart), exact title, or unique title substring. |
+| `kind` | `note` / `studio_item` | no | Restrict the match to notes or to generated outputs. |
+| `confirm` | boolean | no | Only used when the MCP client cannot show an approval prompt (no elicitation support): then it must be true, set only after explicit user approval. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{ "result": { "deleted": "Bridges quiz", "kind": "studio_item" } }   // kind: "studio_item" | "note"
+```
+
+---
+
+## save_answer_as_note
+
+Pin a chat answer as a note in the Studio panel ("Save to note") — the latest answer, or the answer to `question`. When the latest answer was asked through the data API, the tab is reloaded first so the right answer is saved.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `question` | string | no | Question whose answer to save. Omit for the latest answer. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "note": {
+    "title": "The Chain Bridge's lions",
+    "preview": "The stone lions were carved by János Marschalkó…",
+    "question": "Who carved the stone lions?",
+    "answerStart": "The stone lions were carved by János Marschalkó…"
+  }
+}
+```
+
+---
+
+## convert_note_to_source
+
+Turn a note (or all notes) into a source, so the chat and Studio can use it.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `note_title` | string | no | Note title (exact, or a unique substring). Required unless `all` is true. |
+| `all` | boolean | no | Convert all notes. Default false. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{ "result": { "converted": "The Chain Bridge's lions", "sourceCountBefore": 11, "sourceCountAfter": 12 } }
+```
+
+---
+
+## configure_chat
+
+Read or change the notebook's persistent chat configuration ("Configure Chat": goal, custom prompt, response length). Omitted fields keep their value; call without arguments to read. Read and written through the data API (verified by reading back), with the dialog as fallback.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `goal` | `default` / `learning_guide` / `custom` | no | Conversational goal. Omit to keep the current one. |
+| `custom_prompt` | string | no | System instruction for the notebook (role, style, tone, output rules), e.g. "You are a senior code reviewer. Answer in Hungarian, max 5 bullet points." Implies goal "custom" when `goal` is omitted. Max 10 000 chars. Replaces the previous instruction. |
+| `response_length` | `default` / `longer` / `shorter` | no | Answer length. Omit to keep the current one. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "config": {
+    "goal": "custom",               // "default" | "learning_guide" | "custom"
+    "length": "longer",             // "default" | "longer" | "shorter"
+    "customPrompt": "Answer in one sentence, in Hungarian.",
+    "saved": true                   // false for a read or when nothing changed
+  }
+}
+```
+
+NotebookLM keeps a custom prompt stored when the goal is switched back to `default`; it is just inactive.
+
+---
+
+## configure_output_language
+
+Read or set the **account's** output language (Settings → Output language). It decides the language of answers and of Studio outputs that do not name one, for every notebook of the account — also in the NotebookLM web app. With *Default*, NotebookLM uses its interface language, which is English for this server, so a user expecting another language gets English; set an override (after asking the user).
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `language` | string | no | Language to set; "default" removes the override. Omit to read. |
+
+### Return shape
+
+```jsonc
+{
+  "language": "hu",                 // null = Default
+  "name": "magyar",
+  "previous": "en",
+  "changed": true,
+  "note": "Default: NotebookLM answers and generates in its interface language…"  // only when null
+}
+```
+
+`language` accepts a code (`hu`), the listed name (`magyar`), the English name (`Hungarian`) or `default`.
+
+---
+
+## get_usage
+
+Read the AI usage windows: a short rolling window (resets every few hours) and a weekly limit. Read through the data API; if that changes, the Settings → Usage dialog is read instead (then `resets` is the dialog text).
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "usage": {
+    "windows": [
+      { "label": "Current Gemini Notebook AI usage", "percentUsed": 28.4, "resets": "2026-10-05T11:57:24.000Z" },
+      { "label": "Weekly limit", "percentUsed": 2.2, "resets": "2026-10-11T15:57:24.000Z" }
+    ],
+    "raw": "…"
+  }
+}
+```
+
+---
+
+## get_audio_status
+
+Non-blocking probe of the notebook's Audio Overview, for polling after `generate_audio`.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{ "result": { "status": "in_progress" } }   // "ready" | "in_progress" | "not_started" | "error"
 ```
 
 ---
@@ -316,7 +558,7 @@ No parameters. Returns the full library.
     {
       "id": "nb_abcd",
       "name": "n8n Documentation",
-      "url": "https://notebooklm.google.com/notebook/…",
+      "url": "https://notebook.google.com/notebook/…",
       "description": "n8n core + builtin nodes",
       "topics": ["workflow automation", "n8n"],
       "use_cases": ["building n8n workflows"],
@@ -402,7 +644,25 @@ No parameters. Returns total notebooks, total queries, top-used notebooks.
 
 ## list_sessions
 
-No parameters. Returns active sessions with age, message count, last-activity timestamp.
+No parameters. Returns the browser sessions (tabs) of this server.
+
+```jsonc
+{
+  "active_sessions": 2, "max_sessions": 10, "session_timeout": 900,
+  "oldest_session_seconds": 312, "total_messages": 5,
+  "sessions": [
+    {
+      "id": "a1b2c3d4", "created_at": 1791190000000, "last_activity": 1791190300000,
+      "age_seconds": 312, "inactive_seconds": 4, "message_count": 3,
+      "notebook_url": "https://notebook.google.com/notebook/…",
+      "current_operation": "ask_question",  // tool call driving this tab, or null
+      "queued_operations": 1                 // calls waiting for it — one at a time per session
+    }
+  ]
+}
+```
+
+Idle sessions older than `session_timeout` are closed automatically; busy ones are kept.
 
 ---
 
@@ -487,6 +747,66 @@ Workflow:
 1. `cleanup_data({ confirm: false, preserve_library: true })` — see what will be deleted.
 2. Close all Chrome instances.
 3. `cleanup_data({ confirm: true, preserve_library: true })` — execute.
+
+---
+
+## list_prompt_templates
+
+Search the bundled prompt templates (and user packs from `NOTEBOOKLM_PROMPT_DIRS`). Each template targets one action: a chat question, a `configure_chat` instruction or a Studio type. Returns summaries; fetch the text with `get_prompt_template`. Local, read-only.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `query` | string | no | Keywords, e.g. "debate podcast" or "executive deck". |
+| `target` | `ask` / `configure_chat` / `audio` / `video` / `slide_deck` / `mind_map` / `report` / `flashcards` / `quiz` / `infographic` / `data_table` | no | Only templates for this action. |
+| `pack` | string | no | Only this pack (e.g. browser-plugin, learner-pack). |
+| `lang` | string | no | Only templates available in this language (en, hu …). |
+| `limit` | number | no | Page size, 1–100. Default 20. |
+| `offset` | number | no | Results to skip, for paging. Default 0. |
+
+### Return shape
+
+```jsonc
+{
+  "total": 6, "offset": 0,
+  "templates": [
+    { "name": "pa-studio-audio-brief-executive-summary", "title": "Brief - Executive Summary",
+      "target": "audio", "pack": "browser-plugin", "langs": ["en", "hu"], "level": "intermediate",
+      "category": "studio", "description": "[audio] Quick summary to share findings…" }
+  ]
+}
+```
+
+---
+
+## get_prompt_template
+
+Return one template's text (in `lang` when available) and instructions for using it. Does not run anything in NotebookLM — call the named tool afterwards.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes | Template name from `list_prompt_templates`. |
+| `lang` | string | no | Preferred language (en, hu …). Default en. |
+| `topic` | string | no | Learner-pack templates: the topic (required there). |
+| `lens` | string | no | Learner-pack templates: eli5, newbie, clinical, operator, finance, deep_dive. |
+| `context` | string | no | Details for the template's [BRACKETED] placeholders. |
+| `notebook` | string | no | Library notebook id or notebook URL. |
+
+### Return shape
+
+```jsonc
+{
+  "name": "pa-studio-infographic-infographic-brutalist-editorial", "title": "…", "target": "infographic",
+  "pack": "browser-plugin", "langs": ["en", "hu"], "description": "…",
+  "lang": "hu",            // language of the returned text
+  "text": "…",              // the prompt to paste into the named tool
+  "instructions": "…",      // how to use it, with the goal and the tool contract
+  "source": "https://…", "license": "MIT"
+}
+```
 
 ---
 

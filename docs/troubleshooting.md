@@ -1,6 +1,6 @@
 # Troubleshooting
 
-A symptom → fix matrix for v2.0.0. For the full env-var inventory, see [`configuration.md`](./configuration.md).
+A symptom → fix matrix for v3.2. Many operations use NotebookLM's data API and fall back to the web UI; the server log says `RPC path failed — using the UI instead` when that happens. For the full env-var inventory, see [`configuration.md`](./configuration.md).
 
 ## Chrome fails to launch (macOS Tahoe / Windows exit 21)
 
@@ -102,15 +102,19 @@ v2 ships a 5-second shutdown watchdog and an aggressive teardown path, so this i
 
 Cause: Another Chrome owns the base profile.
 
-Fix: The default `NOTEBOOK_PROFILE_STRATEGY=auto` falls back to an isolated per-instance profile. To force isolation always:
+Several server instances on the same data directory (e.g. Claude Desktop's chat and Code tab) no longer compete for it: the first one is the leader and owns the browser, the others forward to it (see [Several clients on one account](#several-clients-on-one-account)). If you still see this error, another program — or an older server version — holds the profile.
+
+Fallback: the default `NOTEBOOK_PROFILE_STRATEGY=auto` switches to an isolated per-instance profile seeded with the saved cookies. Avoid relying on it: the same Google session then runs in two browsers, which Google may answer by asking to sign in again. To force isolation always:
 
 ```bash
 NOTEBOOK_PROFILE_STRATEGY=isolated npx @arlinamid/notebooklm-mcp@latest
 ```
 
-## Rate limit reached
+## Usage limit reached
 
-Symptom: `NotebookLM rate limit reached (50 queries/day for free accounts)`.
+Symptom: `NotebookLM usage limit reached (rolling window resets every few hours; there is also a weekly limit …)`.
+
+NotebookLM meters AI usage in two windows instead of a daily question count. `get_usage` shows both percentages and when they reset. Studio generations (audio, video, slides) use far more than questions.
 
 Options:
 
@@ -119,12 +123,12 @@ Options:
   ```bash
   NOTEBOOKLM_ACCOUNT=backup npx @arlinamid/notebooklm-mcp@latest
   ```
-- Wait until the daily quota resets.
+- Wait until the window resets (`get_usage`), or queue Studio work with `generate_later: true`.
 - Upgrade to Google AI Pro/Ultra for higher limits.
 
 ## Stealth typing too slow
 
-The default `160–240 WPM` range is realistic but slow for batch use. Either disable stealth typing or tighten the range:
+Questions are sent through NotebookLM's query endpoint, so typing only happens on the UI fallback (or with `NOTEBOOKLM_USE_RPC=false`). There, the default `160–240 WPM` range is realistic but slow for batch use. Either disable stealth typing or tighten the range:
 
 ```bash
 STEALTH_HUMAN_TYPING=false npx @arlinamid/notebooklm-mcp@latest
@@ -134,7 +138,7 @@ TYPING_WPM_MIN=400 TYPING_WPM_MAX=600 npx @arlinamid/notebooklm-mcp@latest
 
 ## Citations are empty for `source_format=footnotes`
 
-The DOM citation panel is read after the answer settles. If it is empty:
+Citations come with the answer from NotebookLM's query endpoint (on the UI fallback, from the page's citation panel). If there are none:
 
 - The notebook may not have grounded sources for that question.
 - The UI may have shifted — check the active selectors in `src/notebooklm/selectors.ts`.
@@ -169,3 +173,46 @@ The `_provenance` envelope on the result remains regardless.
 Cause: The client made a `GET /mcp` or `POST /mcp` (non-initialize) without echoing the `Mcp-Session-Id` returned by the initial `initialize` response.
 
 Fix: Capture the `Mcp-Session-Id` response header from the initialize call and pass it on every subsequent request. The lifecycle is owned by the MCP SDK's `StreamableHTTPServerTransport`.
+
+## Answers or Studio outputs in the wrong language
+
+Symptom: answers or generated audio / slides / infographics come out in English (or another unexpected language).
+
+- Check the account's output language: `configure_output_language` without arguments. With **Default**, NotebookLM uses its interface language, and this server runs NotebookLM in English — so output is English. Set the user's language (ask them first; it is an account setting, also in the web app):
+  ```json
+  { "name": "configure_output_language", "arguments": { "language": "hu" } }
+  ```
+- For one Studio output, pass `language` to `generate_studio_artifact`. It takes a code (`hu`), the listed name (`magyar`) or the English name (`Hungarian`).
+- Slide-deck **titles** can come out in English even when the slides are in the requested language — NotebookLM behaviour, not fixable from here.
+
+## Google asks to sign in again
+
+Symptom: `Google asks to sign in again (the NotebookLM page redirected to accounts.google.com)`, or `get_health` says `authenticated: true` but notebook calls fail.
+
+The saved cookies look valid, but Google wants the sign-in confirmed. Run `setup_auth` and sign in in the window it opens. A frequent trigger is the same Google session used from two browsers at once (e.g. an isolated profile fallback, or copying the Chrome profile) — keep one server version on all clients so they share one browser.
+
+## "NotebookLM did not answer"
+
+Symptom: `NotebookLM did not answer ("I’m having trouble responding right now.")`.
+
+That is NotebookLM's own failure reply. Usually temporary — retry after a minute. If it persists, check the sign-in (`setup_auth`) and `get_usage`.
+
+## Something broke after a NotebookLM update
+
+Symptom: a tool fails with `RPC … failed` / `no result for … (RPC id rotated?)`, or answers / Studio calls behave oddly after Google changed NotebookLM.
+
+Operations that have a UI path fall back to it automatically. To force the web UI everywhere until a fix is released:
+
+```bash
+NOTEBOOKLM_USE_RPC=false npx @arlinamid/notebooklm-mcp@latest
+```
+
+`download_studio_artifact` and `configure_output_language` exist only on the data API.
+
+## Several clients on one account
+
+Every MCP client (Claude Desktop's chat, its Code tab, Cursor, …) starts its own server process. On the same data directory the first one becomes the leader (`<dataDir>/leader.json`) and owns Chrome and the library; the others forward tool calls to it, and approvals / file roots / progress reach the right client. If the leader exits, the next call elects a new one.
+
+- All instances must run a version with this feature (3.2+); an older one opens its own browser.
+- `NOTEBOOKLM_SINGLE_BROWSER=false` turns it off (each instance on its own).
+- A stale `leader.json` from a killed process is detected and replaced automatically.
