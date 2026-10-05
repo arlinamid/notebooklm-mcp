@@ -216,7 +216,7 @@ When several MCP clients each start the server on the same data directory (for e
 
 ## Tools
 
-All 34 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
+All 37 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
 
 ### Q&A
 
@@ -237,7 +237,10 @@ All 34 tools below are visible under the `full` profile. See [Profiles](#tool-pr
 | `download_studio_artifact` | Save any finished Studio output: audio `.m4a`, video `.mp4`, infographic `.png`, slide deck `.pdf`/`.pptx`, report `.md`, data table `.csv`, quiz/flashcards `.md`/`.json`, mind map `.json`. Pick by `artifact_id` or newest of a `type`. Uses NotebookLM's data API, not the menus. |
 | `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template`, and `sources` (work from a subset of sources). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. Audio, video, infographic and slide deck start through the data API (returns `artifactId`); `language` takes a code, the listed name or the English name and defaults to the account's output language. |
 | `list_studio_artifacts` | Studio library incl. notes: id, type, title, details, status (`ready` / `generating` / `scheduled`). |
-| `list_sources` | Sources with stable id, title, kind and chat selection. |
+| `list_sources` | Sources with stable id, title, kind and chat selection, plus type, URL (or YouTube channel), word / character counts, status, origin (`research` = imported from research) and date added. |
+| `get_source` | One source in depth for source criticism: metadata, NotebookLM's source guide (summary + keywords) and, with `include_text`, the text NotebookLM actually indexed, in pages. Flags sources with very little indexed text (landing page, abstract, paywall). |
+| `research_sources` | NotebookLM's own source search (Fast or Deep Research, web or Google Drive). **Returns candidates only, never imports.** Refuses vague queries (under 4 words) and answers a repeated query from the notebook's research history, because every run spends AI usage. Deep runs list the candidates the report cites, with the supporting passage; the report itself on request. |
+| `import_research_sources` | Import vetted candidates only: each needs `reliability` (`high`/`medium`) and a `reason`. Low-rated, unexplained, duplicate and blocked-domain candidates are rejected; imported sources come back with word counts and warnings. |
 | `save_answer_as_note` | Pin a chat answer (latest, or by `question`) as a note; the note is checked against the answer text. |
 | `convert_note_to_source` | Turn a note (or `all` notes) into a source, so a worked-out answer can be reused as a source. |
 
@@ -325,7 +328,7 @@ Beyond tools, prompts and resources, the server uses these optional MCP features
 
 | Feature | What it does here |
 |---|---|
-| **Tasks** (experimental) | The long-running tools (`ask_question`, `add_source`, `generate_audio`, `generate_studio_artifact`, `download_audio`, `download_studio_artifact`, `save_answer_as_note`, `convert_note_to_source`) declare `taskSupport: "optional"`. As a task they return at once and report status. They support `tasks/get`, `tasks/result`, `tasks/cancel` and `tasks/list`. Studio tasks finish when the output is ready. |
+| **Tasks** (experimental) | The long-running tools (`ask_question`, `add_source`, `research_sources`, `import_research_sources`, `generate_audio`, `generate_studio_artifact`, `download_audio`, `download_studio_artifact`, `save_answer_as_note`, `convert_note_to_source`) declare `taskSupport: "optional"`. As a task they return at once and report status. They support `tasks/get`, `tasks/result`, `tasks/cancel` and `tasks/list`. Studio tasks finish when the output is ready. |
 | **Cancellation** | Cancelling a call stops the browser work at the next wait step; the session stays usable. |
 | **Progress** | `notifications/progress` for calls that pass a `progressToken`. |
 | **Elicitation** | Approval before deletions, `re_auth` and `cleanup_data`. A chooser when a source or Studio name is ambiguous. The Studio options form (`ask_options`). |

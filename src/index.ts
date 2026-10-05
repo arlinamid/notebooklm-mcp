@@ -129,6 +129,25 @@ Call \`add_source\` per source type — URLs (several per call), YouTube,
 pasted text and local files. URLs, videos and text return once NotebookLM
 has processed them, with the new \`sourceIds\`.
 
+## Source quality comes first
+
+Answers and Studio outputs are only as good as the sources. Vet sources
+before each phase of work:
+
+- \`research_sources\` runs NotebookLM's own Fast / Deep Research but only
+  returns candidates. Every run spends AI usage, so write one precise query
+  (subject + aspect + source type + timeframe); a repeated query is
+  answered from history for free.
+- \`import_research_sources\` imports only candidates vetted as reliable,
+  each with a reason; NotebookLM's picks are often weak (encyclopedias,
+  blogs, marketing, landing pages).
+- \`get_source\` shows what NotebookLM actually indexed (type, URL, words,
+  source guide, the text itself); \`list_sources\` lists type, URL, word
+  count and origin for all sources. Very few indexed words usually mean a
+  landing page, abstract or paywall instead of the document.
+- Work from the vetted subset with \`sources\` on \`ask_question\` and
+  Studio tools.
+
 ## Audio Overview (async chain — important)
 
 \`generate_audio\` is **non-blocking** by default: it triggers the render
@@ -153,7 +172,8 @@ for other calls meanwhile).
   rotates accounts. Studio jobs can use "Generate later"
   (\`generate_later: true\`) to stay outside the current window.
 - Session timeout: ~15 min idle (see \`get_health.session_timeout\`).
-- Google Drive sources are not implemented.
+- Google Drive files can be found with \`research_sources\` (\`corpus: "drive"\`);
+  direct Drive and Play Books import is not implemented.
 
 ## Studio
 
@@ -996,6 +1016,24 @@ class NotebookLMMCPServer {
             result = await this.toolHandlers.handleDeleteStudioArtifact(
               args as unknown as Parameters<ToolHandlers["handleDeleteStudioArtifact"]>[0],
               this.askUserApproval
+            );
+            break;
+
+          case "research_sources":
+            result = await this.toolHandlers.handleResearchSources(
+              args as Parameters<ToolHandlers["handleResearchSources"]>[0]
+            );
+            break;
+
+          case "import_research_sources":
+            result = await this.toolHandlers.handleImportResearchSources(
+              args as Parameters<ToolHandlers["handleImportResearchSources"]>[0]
+            );
+            break;
+
+          case "get_source":
+            result = await this.toolHandlers.handleGetSource(
+              args as unknown as Parameters<ToolHandlers["handleGetSource"]>[0]
             );
             break;
 

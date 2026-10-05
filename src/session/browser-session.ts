@@ -96,7 +96,85 @@ import { RpcError, rpcEnabled } from "../notebooklm/rpc.js";
 import { askRpc } from "../notebooklm/chat-rpc.js";
 import { addSourcesRpc, configureChatRpc, readUsageRpc } from "../notebooklm/rpc-ops.js";
 import { generateStudioRpc } from "../notebooklm/studio-rpc.js";
+import {
+  getSourceGuideRpc,
+  getSourceTextRpc,
+  importResearchRpc,
+  listResearchRpc,
+  listSourceDetailsRpc,
+  startResearchRpc,
+  type ResearchCorpus,
+  type ResearchMode,
+  type ResearchTask,
+  type SourceDetails,
+} from "../notebooklm/source-ops.js";
+import {
+  THIN_SOURCE_WORDS,
+  findEarlierRun,
+  normalizeQuery,
+  vetSelections,
+  type ImportSelection,
+  type Rejection,
+} from "../notebooklm/research-policy.js";
+import { resolveSourceIds } from "../notebooklm/source-select.js";
 import { abortable, reportProgress } from "../utils/request-context.js";
+
+/** Source fields added to list_sources / import results. */
+type SourceFields = Omit<SourceDetails, "id" | "title" | "driveId" | "mimeType"> &
+  Partial<Pick<SourceDetails, "driveId" | "mimeType">>;
+
+function detailFields(d: SourceDetails): SourceFields {
+  const { id: _id, title: _title, driveId, mimeType, ...rest } = d;
+  return { ...rest, ...(driveId && { driveId }), ...(mimeType && { mimeType }) };
+}
+
+/** Signs that the indexed text is not the document the source claims to be. */
+function sourceWarnings(s: SourceDetails): string[] {
+  const out: string[] = [];
+  if (s.status === "failed") out.push("NotebookLM could not process this source.");
+  if (
+    s.status === "ready" &&
+    s.words !== null &&
+    s.words < THIN_SOURCE_WORDS &&
+    ["web", "pdf", "word_doc", "google_doc"].includes(s.type)
+  ) {
+    out.push(
+      `Only ${s.words} words were indexed — possibly a landing page, abstract, paywall or ` +
+        "cookie wall rather than the full document. Check it with get_source (include_text); " +
+        "if so, add the full-text URL or file instead."
+    );
+  }
+  return out;
+}
+
+export interface InspectedSource extends SourceDetails {
+  guide: { summary: string | null; keywords: string[] };
+  warnings: string[];
+  text?: { content: string; offset: number; totalChars: number; nextOffset: number | null };
+}
+
+export interface ResearchOutcome {
+  task: ResearchTask;
+  /** started now · reused (same query earlier) · busy (another run in progress) · history (lookup). */
+  origin: "started" | "reused" | "busy" | "history";
+}
+
+export interface ResearchImportResult {
+  taskId: string;
+  imported: Array<
+    SourceFields & {
+      id: string;
+      title: string;
+      reliability: string | null;
+      reason: string | null;
+      warnings: string[];
+    }
+  >;
+  rejected: Rejection[];
+}
+
+/** How often a running research is checked. */
+const RESEARCH_POLL_MS = 4_000;
 
 export interface StudioDownloadResult {
   artifact: StudioDownloadTarget;
@@ -844,10 +922,209 @@ export class BrowserSession {
   }
 
   /**
-   * List the notebook's sources (id, title, kind, chat selection).
+   * List the notebook's sources (id, title, kind, chat selection), enriched
+   * over RPC with type, URL, size, status and origin.
    */
-  async listSources(): Promise<NotebookSource[]> {
-    return this.onPage("list_sources", (page) => listSources(page));
+  async listSources(): Promise<Array<NotebookSource & Partial<SourceDetails>>> {
+    return this.onPage("list_sources", async (page) => {
+      const details = await this.tryRpc("list_sources", () =>
+        listSourceDetailsRpc(page, this.notebookId())
+      );
+      const ui = await listSources(page).catch((error) => {
+        if (!details) throw error;
+        return [] as NotebookSource[];
+      });
+      if (!details) return ui;
+      const byId = new Map(details.map((d) => [d.id, d]));
+      const merged: Array<NotebookSource & Partial<SourceDetails>> = ui.map((s) => {
+        const d = byId.get(s.id);
+        byId.delete(s.id);
+        return d ? { ...s, ...detailFields(d) } : s;
+      });
+      // Sources added over RPC since the tab last rendered (selected by default).
+      for (const d of byId.values()) {
+        merged.push({ id: d.id, title: d.title, kind: d.type, selected: true, ...detailFields(d) });
+      }
+      return merged;
+    });
+  }
+
+  /**
+   * One source in depth: metadata, NotebookLM's source guide and (optionally)
+   * a window of the indexed text — the raw material for source criticism.
+   */
+  async inspectSource(
+    ref: string,
+    opts: { includeText: boolean; offset: number; maxChars: number }
+  ): Promise<InspectedSource> {
+    return this.onPage("get_source", async (page) => {
+      const details = await this.requireRpc("get_source", () =>
+        listSourceDetailsRpc(page, this.notebookId())
+      );
+      const [id] = await resolveSourceIds(details, [ref]);
+      const source = details.find((d) => d.id === id)!;
+      const guide = await this.tryRpc("get_source", () => getSourceGuideRpc(page, id)).catch(
+        () => null
+      );
+      const result: InspectedSource = {
+        ...source,
+        guide: guide ?? { summary: null, keywords: [] },
+        warnings: sourceWarnings(source),
+      };
+      if (opts.includeText) {
+        const text = await this.requireRpc("get_source", () => getSourceTextRpc(page, id));
+        const start = Math.min(Math.max(0, opts.offset), text.length);
+        const end = Math.min(text.length, start + opts.maxChars);
+        result.text = {
+          content: text.slice(start, end),
+          offset: start,
+          totalChars: text.length,
+          nextOffset: end < text.length ? end : null,
+        };
+      }
+      return result;
+    });
+  }
+
+  /**
+   * Run (or look up) a Fast / Deep Research. Without `query` it reports the
+   * newest run (or `taskId`). A query already run in this notebook is
+   * answered from history; a running research is reported, not doubled.
+   */
+  async research(opts: {
+    query?: string;
+    mode: ResearchMode;
+    corpus: ResearchCorpus;
+    taskId?: string;
+    waitMs: number;
+  }): Promise<ResearchOutcome> {
+    const notebookId = this.notebookId();
+    const list = () =>
+      this.onPage("research_sources", (page) =>
+        this.requireRpc("research_sources", () => listResearchRpc(page, notebookId))
+      );
+    const tasks = await list();
+
+    if (!opts.query) {
+      const task = opts.taskId ? tasks.find((t) => t.taskId === opts.taskId) : tasks[0];
+      if (!task) {
+        throw new Error(
+          opts.taskId
+            ? `No research run ${opts.taskId} in this notebook.`
+            : "This notebook has no research runs yet — pass a `query` to start one."
+        );
+      }
+      return { task, origin: "history" };
+    }
+
+    const earlier = findEarlierRun(tasks, opts.query, opts.mode, opts.corpus);
+    if (earlier) return { task: earlier, origin: "reused" };
+    const running = tasks.find((t) => t.status === "running");
+    if (running) return { task: running, origin: "busy" };
+
+    const taskId = await this.onPage("research_sources", (page) =>
+      this.requireRpc("research_sources", () =>
+        startResearchRpc(page, notebookId, opts.query!, opts.corpus, opts.mode)
+      )
+    );
+    // Deep research may re-key its task, so also match by query.
+    const want = normalizeQuery(opts.query);
+    const find = (all: ResearchTask[]) =>
+      all.find((t) => t.taskId === taskId) ??
+      all.find((t) => normalizeQuery(t.query) === want && t.mode === opts.mode);
+    const started = Date.now();
+    let task: ResearchTask | undefined;
+    for (;;) {
+      task = find(await list());
+      if (task?.status === "completed" || Date.now() - started >= opts.waitMs) break;
+      const secs = Math.round((Date.now() - started) / 1000);
+      void reportProgress(`Research running (${secs} s)…`);
+      await abortable(new Promise((resolve) => setTimeout(resolve, RESEARCH_POLL_MS)));
+    }
+    return {
+      task: task ?? {
+        taskId,
+        query: opts.query,
+        corpus: opts.corpus,
+        mode: opts.mode,
+        status: "running",
+        summary: null,
+        reportTitle: null,
+        report: null,
+        candidates: [],
+        startedAt: new Date(started).toISOString(),
+      },
+      origin: "started",
+    };
+  }
+
+  /**
+   * Import vetted candidates of a finished research run, wait until
+   * NotebookLM has processed them and flag suspiciously thin ones.
+   */
+  async importResearch(
+    taskId: string | undefined,
+    selections: ImportSelection[]
+  ): Promise<ResearchImportResult> {
+    return this.onPage("import_research_sources", async (page) => {
+      const notebookId = this.notebookId();
+      const tasks = await this.requireRpc("import_research_sources", () =>
+        listResearchRpc(page, notebookId)
+      );
+      const task = taskId
+        ? tasks.find((t) => t.taskId === taskId)
+        : tasks.find((t) => t.status === "completed");
+      if (!task) {
+        throw new Error(
+          taskId
+            ? `No research run ${taskId} in this notebook.`
+            : "No finished research run in this notebook — run research_sources first."
+        );
+      }
+      if (task.status !== "completed") {
+        throw new Error("That research run is still running — check it with research_sources.");
+      }
+      const before = await this.requireRpc("import_research_sources", () =>
+        listSourceDetailsRpc(page, notebookId)
+      );
+      const existingUrls = new Set(before.map((s) => s.url).filter((u): u is string => !!u));
+      const { accepted, rejected } = vetSelections(task, selections, existingUrls);
+      if (accepted.length === 0) {
+        return { taskId: task.taskId, imported: [], rejected };
+      }
+
+      const added = await this.requireRpc("import_research_sources", () =>
+        importResearchRpc(
+          page,
+          notebookId,
+          task.taskId,
+          accepted.map((a) => a.candidate)
+        )
+      );
+      const ids = new Set(added.map((a) => a.id));
+      const deadline = Date.now() + 90_000;
+      let now = await listSourceDetailsRpc(page, notebookId);
+      while (Date.now() < deadline && now.some((s) => ids.has(s.id) && s.status === "processing")) {
+        await page.waitForTimeout(2_000);
+        now = await listSourceDetailsRpc(page, notebookId);
+      }
+      await this.reloadPage(page, now.length);
+
+      const imported = now
+        .filter((s) => ids.has(s.id))
+        .map((s) => {
+          const vet = accepted.find((a) => a.candidate.url === s.url);
+          return {
+            ...detailFields(s),
+            id: s.id,
+            title: s.title,
+            reliability: vet?.reliability ?? null,
+            reason: vet?.reason ?? null,
+            warnings: sourceWarnings(s),
+          };
+        });
+      return { taskId: task.taskId, imported, rejected };
+    });
   }
 
   /**
@@ -914,6 +1191,24 @@ export class BrowserSession {
    * return null so the caller falls back to the UI path. Other errors (bad
    * input, auth) are real and propagate.
    */
+  private async requireRpc<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    if (!rpcEnabled()) {
+      throw new Error(`${label} needs the RPC API, which NOTEBOOKLM_USE_RPC=false turned off.`);
+    }
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof RpcError && error.code !== 16) {
+        throw new Error(
+          `${label}: NotebookLM's API did not answer as expected (${error.message}). ` +
+            "Google may have changed it; this operation has no UI fallback.",
+          { cause: error }
+        );
+      }
+      throw error;
+    }
+  }
+
   private async tryRpc<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
     if (!rpcEnabled()) return null;
     try {
