@@ -180,9 +180,9 @@ Symptom: answers or generated audio / slides / infographics come out in English 
 
 - Check the account's output language: `configure_output_language` without arguments. With **Default**, NotebookLM uses its interface language, and this server runs NotebookLM in English — so output is English. Set the user's language (ask them first; it is an account setting, also in the web app):
   ```json
-  { "name": "configure_output_language", "arguments": { "language": "hu" } }
+  { "name": "configure_output_language", "arguments": { "language": "ja" } }
   ```
-- For one Studio output, pass `language` to `generate_studio_artifact`. It takes a code (`hu`), the listed name (`magyar`) or the English name (`Hungarian`).
+- For one Studio output, pass `language` to `generate_studio_artifact`. It takes a code (`ja`), the listed name (`日本語`) or the English name (`Japanese`).
 - Slide-deck **titles** can come out in English even when the slides are in the requested language — NotebookLM behaviour, not fixable from here.
 
 ## Google asks to sign in again

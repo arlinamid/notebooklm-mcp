@@ -140,7 +140,7 @@ Without `query` it reads the newest run, or `task_id`.
 {
   "name": "research_sources",
   "arguments": {
-    "query": "Széchenyi Chain Bridge Budapest 2021-2023 reconstruction official engineering details",
+    "query": "EU AI Act Article 6 high-risk classification — official EU texts and Commission guidelines 2024-2026",
     "mode": "fast"
   }
 }
@@ -153,19 +153,19 @@ Without `query` it reads the newest run, or `task_id`.
   "task_id": "2d240123-…",
   "status": "completed",                 // or "running"
   "origin": "started",                   // started | reused | busy | history
-  "query": "Széchenyi Chain Bridge …",
+  "query": "EU AI Act Article 6 …",
   "mode": "fast",
   "corpus": "web",
   "started_at": "2026-10-06T…Z",
-  "summary": "Engineering documents and detailed studies on the 2021–2023 reconstruction.",  // fast
+  "summary": "Official texts and guidance on high-risk AI classification.",  // fast
   "report_title": "…", "report_chars": 28798,  // deep; `report` with include_report
   "candidate_count": 10,
   "candidates": [
     {
-      "index": 3,
-      "url": "https://bkk.hu/fejlesztesek/…",
-      "title": "Legfontosabb kulturális örökségünk, a Lánchíd felújítása - BKK.hu",
-      "description": "Official investor summary with the key figures.",
+      "index": 0,
+      "url": "https://eur-lex.europa.eu/eli/reg/2024/1689/oj",
+      "title": "Regulation (EU) 2024/1689 (Artificial Intelligence Act)",
+      "description": "The regulation's official text.",
       "type": "web",                     // web | google_doc | google_slides | google_sheets | drive_pdf | drive_word
       "imported": false
       // deep runs: "cited": true, "citation": 4, "passage": "…the text the report drew from it…"
@@ -198,15 +198,15 @@ The call waits until NotebookLM has processed the imports. Each comes back with 
   "taskId": "2d240123-…",
   "imported": [
     {
-      "id": "3cc7bbad-…", "title": "Reconstruction of the Széchenyi Chain Bridge in Budapest",
-      "type": "web", "url": "https://real.mtak.hu/246902/", "words": 460, "characters": 1152,
+      "id": "3cc7bbad-…", "title": "High-risk AI systems: classification rules",
+      "type": "web", "url": "https://repository.example.edu/record/1234", "words": 460, "characters": 2950,
       "status": "ready", "origin": "research", "addedAt": "…",
       "reliability": "medium", "reason": "…",
       "warnings": ["Only 460 words were indexed — possibly a landing page …"]
     }
   ],
   "rejected": [{ "index": 6, "title": "…", "reason": "reliability \"low\" — only candidates vetted as \"high\" or \"medium\" may be imported …" }],
-  "next_step": "Check \"Reconstruction of …\" with get_source (include_text: true) …"   // when something was flagged
+  "next_step": "Check \"High-risk AI systems …\" with get_source (include_text: true) …"   // when something was flagged
 }
 ```
 
@@ -231,11 +231,11 @@ Inspect one source for source criticism: metadata, NotebookLM's source guide and
 ```jsonc
 {
   "source": {
-    "id": "c33daf52-…", "title": "Széchenyi lánchíd – Wikipédia",
-    "type": "web", "url": "https://hu.wikipedia.org/wiki/…", "channel": null,
+    "id": "c33daf52-…", "title": "Regulation (EU) 2024/1689 – EUR-Lex",
+    "type": "web", "url": "https://eur-lex.europa.eu/eli/reg/2024/1689/oj", "channel": null,
     "words": 10108, "characters": 55550, "status": "ready", "origin": "added",
     "addedAt": "2026-10-04T…Z", "mimeType": null, "driveId": null,
-    "guide": { "summary": "The source describes …", "keywords": ["Széchenyi lánchíd", "…"] },
+    "guide": { "summary": "The source describes …", "keywords": ["AI Act", "high-risk systems", "…"] },
     "warnings": [],
     "text": { "content": "…", "offset": 0, "totalChars": 73737, "nextOffset": 4000 }   // include_text
   }
@@ -352,7 +352,7 @@ Start any Studio output: audio, video, slide deck, mind map, report, flashcards,
 | `orientation` | `landscape` / `portrait` / `square` | no | infographic. |
 | `detail` | `concise` / `standard` / `detailed` | no | infographic level of detail (`detailed` is beta). |
 | `style` | `auto` / `sketch_note` / `professional` / `bento_grid` / `editorial` / `instructional` / `bricks` / `clay` / `anime` / `kawaii` / `scientific` | no | infographic visual style. |
-| `language` | string | no | Output language: a code ("hu"), the name NotebookLM lists ("magyar") or the English name ("Hungarian"); all types except video. Defaults to the account's output language (see `configure_output_language`). |
+| `language` | string | no | Output language: a code ("ja"), the name NotebookLM lists ("日本語") or the English name ("Japanese"); all types except video. Defaults to the account's output language (see `configure_output_language`). |
 | `sources` | string[] | no | Restrict the output to these sources — each entry is a source title (exact or a unique substring) or source id. Omit to use all sources. Very useful in multi-source notebooks. Not available for `report`. |
 | `template` | `learning_overview` / `create_your_own` / `briefing_doc` / `study_guide` / `blog_post` | no | report only. `learning_overview` = interactive report; the others are document reports. A `prompt` is appended to the template's built-in instructions; `create_your_own` uses the prompt alone (required). Default: learning_overview, or create_your_own when `format: document` and a prompt is given. |
 | `ask_options` | boolean | no | Show the user a form to choose the options (needs client elicitation support; otherwise the given arguments are used). Default false. |
@@ -372,7 +372,7 @@ Start any Studio output: audio, video, slide deck, mind map, report, flashcards,
 }
 ```
 
-`language` takes a code (`hu`), the name NotebookLM lists (`magyar`) or the English name (`Hungarian`). An unknown name is rejected with the list the dialog offers.
+`language` takes a code (`ja`), the name NotebookLM lists (`日本語`) or the English name (`Japanese`). An unknown name is rejected with the list the dialog offers.
 
 ---
 
@@ -523,7 +523,7 @@ Read or change the notebook's persistent chat configuration ("Configure Chat": g
 | Name | Type | Required | Notes |
 |---|---|---|---|
 | `goal` | `default` / `learning_guide` / `custom` | no | Conversational goal. Omit to keep the current one. |
-| `custom_prompt` | string | no | System instruction for the notebook (role, style, tone, output rules), e.g. "You are a senior code reviewer. Answer in Hungarian, max 5 bullet points." Implies goal "custom" when `goal` is omitted. Max 10 000 chars. Replaces the previous instruction. |
+| `custom_prompt` | string | no | System instruction for the notebook (role, style, tone, output rules), e.g. "You are a senior code reviewer. Answer in German, max 5 bullet points." Implies goal "custom" when `goal` is omitted. Max 10 000 chars. Replaces the previous instruction. |
 | `response_length` | `default` / `longer` / `shorter` | no | Answer length. Omit to keep the current one. |
 | `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
 
@@ -534,7 +534,7 @@ Read or change the notebook's persistent chat configuration ("Configure Chat": g
   "config": {
     "goal": "custom",               // "default" | "learning_guide" | "custom"
     "length": "longer",             // "default" | "longer" | "shorter"
-    "customPrompt": "Answer in one sentence, in Hungarian.",
+    "customPrompt": "Answer in one sentence, in German.",
     "saved": true                   // false for a read or when nothing changed
   }
 }
@@ -558,15 +558,15 @@ Read or set the **account's** output language (Settings → Output language). It
 
 ```jsonc
 {
-  "language": "hu",                 // null = Default
-  "name": "magyar",
+  "language": "ja",                 // null = Default
+  "name": "日本語",
   "previous": "en",
   "changed": true,
   "note": "Default: NotebookLM answers and generates in its interface language…"  // only when null
 }
 ```
 
-`language` accepts a code (`hu`), the listed name (`magyar`), the English name (`Hungarian`) or `default`.
+`language` accepts a code (`ja`), the listed name (`日本語`), the English name (`Japanese`) or `default`.
 
 ---
 

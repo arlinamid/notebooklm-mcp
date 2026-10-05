@@ -134,7 +134,7 @@ Answers, audio and slides can only be as good as the sources, and NotebookLM's o
 Each source has `type`, `url`, `words` and `origin`. A web page or PDF with a few hundred words is usually a landing page, abstract or paywall. Look inside:
 
 ```json
-{ "name": "get_source", "arguments": { "source": "Reconstruction of the Széchenyi", "include_text": true, "max_chars": 3000 } }
+{ "name": "get_source", "arguments": { "source": "High-risk AI systems", "include_text": true, "max_chars": 3000 } }
 ```
 
 `guide` is NotebookLM's own summary and keywords; `text` is what answers are grounded on.
@@ -250,7 +250,7 @@ The result has the absolute `filePath` of the `.m4a`. If you call `download_audi
 
 ## Studio outputs: generate, wait, download
 
-Any Studio type works the same way — here an infographic in Hungarian, square, from one source:
+Any Studio type works the same way — here an infographic in Japanese, square, from one source:
 
 ```json
 {
@@ -258,7 +258,7 @@ Any Studio type works the same way — here an infographic in Hungarian, square,
   "arguments": {
     "type": "infographic", "prompt": "The city's bridges at a glance",
     "orientation": "square", "detail": "concise", "style": "professional",
-    "language": "hu", "sources": ["Chain Bridge – Wikipedia"]
+    "language": "ja", "sources": ["Chain Bridge – Wikipedia"]
   }
 }
 ```
@@ -281,13 +281,13 @@ Answers and Studio outputs follow the **account's** output language. Check it:
 { "name": "configure_output_language", "arguments": {} }
 ```
 
-`language: null` means *Default*: NotebookLM then uses its interface language, which is English for this server — a Hungarian user would get English. Set it (it is an account setting, also in the web app, so ask the user first):
+`language: null` means *Default*: NotebookLM then uses its interface language, which is English for this server — a user who works in, say, Japanese would get English. Set it (it is an account setting, also in the web app, so ask the user first):
 
 ```json
-{ "name": "configure_output_language", "arguments": { "language": "magyar" } }
+{ "name": "configure_output_language", "arguments": { "language": "Japanese" } }
 ```
 
-A single Studio output can override it with `language` (`hu`, `magyar` or `Hungarian` all work).
+A single Studio output can override it with `language` (`ja`, `日本語` or `Japanese` all work).
 
 ---
 

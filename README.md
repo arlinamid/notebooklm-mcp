@@ -136,6 +136,23 @@ Run the server in HTTP mode (see [Transports](#transports)) and POST JSON-RPC ag
 
 ---
 
+## Agent skill and plugins
+
+The tools say *what* NotebookLM can do; the **`notebooklm-workflow` skill** ([`skills/notebooklm-workflow/`](./skills/notebooklm-workflow/SKILL.md)) teaches an agent *how* to work with it: source criticism before every phase, phase-specific Configure Chat prompts, Studio prompts, output language, quota-aware questions and verification — with playbooks for learning, research, work and hobby projects. It follows the open [Agent Skills](https://agentskills.io) format, so it works in any agent that loads skills, and needs the MCP server above.
+
+| Agent | Install |
+|---|---|
+| Claude Code | `claude plugin marketplace add arlinamid/notebooklm-mcp`, then `claude plugin install notebooklm@arlinamid-notebooklm` (server + skill) |
+| Claude Desktop / claude.ai | add the marketplace `arlinamid/notebooklm-mcp` in the plugin settings, or upload the skill ZIP (`npm run skill:zip` → `dist-skills/notebooklm-workflow.zip`) under Settings → Capabilities (code execution must be on) |
+| Codex | `codex plugin marketplace add arlinamid/notebooklm-mcp` (server + skill) |
+| Cursor | the repository is a Cursor plugin (`.cursor-plugin/plugin.json`) |
+| Any agent (skill only) | `npx skills add arlinamid/notebooklm-mcp -g` — installs into the agents' skill folders (`~/.agents/skills` is read by Codex, Gemini CLI and Cursor) |
+| From a clone | `npm run skill:install` copies the skill to `~/.claude/skills` and `~/.agents/skills` (`-- --agent copilot` for `~/.copilot/skills`, `-- --force` to replace) |
+
+The plugins start the server with `npx -y @arlinamid/notebooklm-mcp@latest` ([`mcp.json`](./mcp.json)). If you already configured the server by hand, remove that entry or install the skill alone, so the tools are not listed twice.
+
+---
+
 ## Authentication
 
 `setup_auth` opens a visible Chrome, you log in to your Google account once, and the cookies are persisted in the per-user Chrome profile. Subsequent runs reuse that profile and do not need to log in again.
@@ -271,7 +288,7 @@ Refresh the bundled packs with `npm run import:prompts`. `npm run import:prompts
 | Tool | Purpose |
 |---|---|
 | `configure_chat` | Read or set the notebook's persistent system instruction ("Configure Chat": goal, custom prompt, response length). Affects every later answer. |
-| `configure_output_language` | Read or set the account's output language (Settings → Output language): the language of answers and of Studio outputs that name none. With *Default* NotebookLM uses its interface language — English for this server — so set it when users expect another language. Accepts a code (`hu`), the listed name (`magyar`) or the English name (`Hungarian`). |
+| `configure_output_language` | Read or set the account's output language (Settings → Output language): the language of answers and of Studio outputs that name none. With *Default* NotebookLM uses its interface language — English for this server — so set it when users expect another language. Accepts a code (`ja`), the listed name (`日本語`) or the English name (`Japanese`). |
 | `get_usage` | AI usage & limits: rolling window and weekly limit, percent used and reset times. |
 
 NotebookLM meters AI usage (a rolling window that resets every few hours plus a weekly limit) instead of a fixed number of questions per day; when a limit is hit, `ask_question` points to `get_usage` for the reset time.

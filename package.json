@@ -18,8 +18,11 @@
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "import:prompts": "node scripts/import-prompt-packs.mjs",
-    "check": "npm run format:check && npm run lint && npm run build && npm run test:smoke",
-    "test:smoke": "node scripts/smoke-test.mjs"
+    "check": "npm run format:check && npm run lint && npm run skill:validate && npm run build && npm run test:smoke",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "skill:validate": "node scripts/skill.mjs validate",
+    "skill:zip": "node scripts/skill.mjs zip",
+    "skill:install": "node scripts/skill.mjs install"
   },
   "keywords": [
     "mcp",

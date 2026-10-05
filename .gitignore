@@ -48,3 +48,6 @@ venv/
 .playwright-mcp/
 tmp/
 studio-*.png
+
+# Skill upload bundles (npm run skill:zip)
+dist-skills/

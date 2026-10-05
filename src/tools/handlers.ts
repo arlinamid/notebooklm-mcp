@@ -1784,8 +1784,8 @@ export class ToolHandlers {
           return {
             success: false,
             error:
-              `Unknown language "${args.language}". Use a code ("hu"), the name NotebookLM ` +
-              'lists ("magyar") or the English name ("Hungarian"), or "default".',
+              `Unknown language "${args.language}". Use a code ("ja"), the name NotebookLM ` +
+              'lists ("日本語") or the English name ("Japanese"), or "default".',
           };
         }
         target = wantsDefault ? null : resolved!.code;
