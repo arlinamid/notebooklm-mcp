@@ -18,7 +18,11 @@ import type { SharedContextManager } from "./shared-context-manager.js";
 import type { AuthManager } from "../auth/auth-manager.js";
 import { humanType, randomDelay } from "../utils/stealth-utils.js";
 import { snapshotAllResponses } from "../utils/page-utils.js";
-import { waitForStableAnswer, snapshotPriorAnswers } from "../notebooklm/chat.js";
+import {
+  waitForStableAnswer,
+  snapshotPriorAnswers,
+  detectFailureReply,
+} from "../notebooklm/chat.js";
 import { dismissPromoDialogs } from "../notebooklm/dialogs.js";
 import {
   generateStudioArtifact,
@@ -233,6 +237,14 @@ export class BrowserSession {
         log.success("  ✅ Chat input ready (fallback)!");
       } catch (error) {
         log.error(`  ❌ NotebookLM interface not ready: ${error}`);
+        // Cookies can look valid while Google wants the identity confirmed again.
+        if (this.page.url().includes("accounts.google.com")) {
+          throw new Error(
+            "Google asks to sign in again (the NotebookLM page redirected to accounts.google.com). " +
+              "Run setup_auth, then retry.",
+            { cause: error }
+          );
+        }
         throw new Error(
           "Could not find NotebookLM chat input. " +
             "Please ensure the notebook page has loaded correctly.",
@@ -499,6 +511,14 @@ export class BrowserSession {
 
       if (!answer) {
         throw new Error("Timeout waiting for response from NotebookLM");
+      }
+
+      const failure = detectFailureReply(answer);
+      if (failure) {
+        throw new Error(
+          `NotebookLM did not answer ("${failure}"). Usually temporary — retry in a ` +
+            "minute. If it persists, the Google session may need a fresh login: run setup_auth."
+        );
       }
 
       // Check for rate limit errors AFTER receiving answer

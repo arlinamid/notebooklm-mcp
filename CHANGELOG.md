@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- After an answer with citations (`source_format` other than `none`), the
+  session's sidebar stayed on the cited source instead of the source list:
+  clicking a citation marker opens the source there and Escape does not close
+  it. `list_sources` then returned nothing and a follow-up `ask_question`
+  with `sources` failed with "This notebook has no sources". The source view
+  is now closed after citation extraction and before every source listing.
+- NotebookLM's "I'm having trouble responding right now." reply was returned
+  as a successful answer; `ask_question` now reports it as an error.
+- When Google wants the sign-in confirmed again, opening a notebook failed
+  with "Could not find NotebookLM chat input"; it now says to run
+  `setup_auth`.
+
 ## [3.1.0] - 2026-10-04
 
 ### Added
