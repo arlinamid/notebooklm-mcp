@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `download_studio_artifact` — saves any finished Studio output: audio
+  (`.m4a`), video (`.mp4`), infographic (`.png`), slide deck (`.pdf` or
+  `.pptx`), report (`.md`), data table (`.csv`, `.xlsx` exports), quiz and
+  flashcards (`.md`, `.json` or `.html`) and mind maps (`.json`). It reads
+  NotebookLM's own data API (`batchexecute` RPCs, called from inside the
+  signed-in tab) instead of clicking menus, so it is fast (1–4 s per item)
+  and independent of the UI layout. Pick an item by `artifact_id` (or a
+  unique prefix) or the newest finished one of a `type`. The RPC layer
+  follows the protocol mapping of gemini-notebook-mcp-cli (MIT); see
+  THIRD_PARTY_NOTICES.md.
+
+### Fixed
+
+- Concurrent tool calls on the same session no longer drive its browser tab
+  at the same time (two calls clicking in one tab closed each other's
+  dialogs and panels). Each session now has a FIFO queue: page interactions
+  run one at a time, waiting calls get a "Queued behind …" progress message,
+  and `list_sessions` shows `current_operation` / `queued_operations`.
+  Long renders do not hold the tab — `generate_audio` with
+  `wait_for_completion` polls in short queued steps, so chat questions and
+  other Studio work can run meanwhile. An answer and its citations are read
+  in one step.
+- Two calls that open the same new `session_id` at once share one tab
+  instead of opening two; idle-session cleanup never closes a busy tab.
+
 ## [3.1.1] - 2026-10-05
 
 ### Fixed

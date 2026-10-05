@@ -13,6 +13,10 @@ export interface SessionInfo {
   inactive_seconds: number;
   message_count: number;
   notebook_url: string;
+  /** Tool call driving this session's tab right now (null when idle). */
+  current_operation: string | null;
+  /** Tool calls waiting for this session's tab. */
+  queued_operations: number;
 }
 
 /**

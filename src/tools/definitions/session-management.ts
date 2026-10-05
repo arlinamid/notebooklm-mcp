@@ -15,10 +15,13 @@ export const sessionManagementTools: Tool[] = [
     description:
       "List all active browser sessions for this server. Each entry includes " +
       "`id`, `created_at`, `last_activity`, `age_seconds`, `inactive_seconds`, " +
-      "`message_count`, and `notebook_url`. Useful before `reset_session` / " +
-      "`close_session` or to recover a `session_id` you can pass back into " +
-      "`ask_question` to continue an existing conversation. Sessions older " +
-      "than `session_timeout` (see `get_health`) are auto-closed.",
+      "`message_count`, `notebook_url`, `current_operation` (the tool call " +
+      "driving the session's tab, or null) and `queued_operations` (calls " +
+      "waiting for it — calls on one session run one at a time). Useful " +
+      "before `reset_session` / `close_session` or to recover a `session_id` " +
+      "you can pass back into `ask_question` to continue an existing " +
+      "conversation. Idle sessions older than `session_timeout` (see " +
+      "`get_health`) are auto-closed; busy ones are kept.",
     inputSchema: {
       type: "object",
       properties: {},

@@ -14,7 +14,8 @@ import type {
   UpdateNotebookInput,
 } from "../library/types.js";
 import type { AddSourceResult } from "../notebooklm/sources.js";
-import type { BrowserSession } from "../session/browser-session.js";
+import type { BrowserSession, StudioDownloadResult } from "../session/browser-session.js";
+import type { StudioDownloadFormat } from "../notebooklm/studio-download.js";
 import {
   STUDIO_TYPES,
   type GenerateStudioResult,
@@ -240,12 +241,14 @@ export class ToolHandlers {
         // Progress: Asking question
         await sendProgress?.("Asking question to NotebookLM...", 2, 5);
 
-        // Ask the question (pass progress callback)
-        const rawAnswer = await session.ask(question, sendProgress, { sources });
-
-        // Extract citations from the same page session before any other call
-        // disturbs the source panel (issue #20).
-        const citationResult = await session.extractCitations(rawAnswer, source_format);
+        // Ask and extract citations as one locked step on the tab, so no other
+        // call disturbs the answer or the source panel in between (issue #20).
+        const citationResult = await session.askWithCitations(
+          question,
+          source_format,
+          sendProgress,
+          { sources }
+        );
         const baseAnswer = citationResult.formattedAnswer;
 
         const trimmed = baseAnswer.trimEnd();
@@ -330,6 +333,8 @@ export class ToolHandlers {
         inactive_seconds: number;
         message_count: number;
         notebook_url: string;
+        current_operation: string | null;
+        queued_operations: number;
       }>;
     }>
   > {
@@ -353,6 +358,8 @@ export class ToolHandlers {
           inactive_seconds: info.inactive_seconds,
           message_count: info.message_count,
           notebook_url: info.notebook_url,
+          current_operation: info.current_operation,
+          queued_operations: info.queued_operations,
         })),
       };
 
@@ -1444,6 +1451,25 @@ export class ToolHandlers {
       return { success: false, data: res.data, error: res.data.result.message };
     }
     return res;
+  }
+
+  /**
+   * Handle download_studio_artifact — save any finished Studio output.
+   */
+  async handleDownloadStudioArtifact(
+    args: NotebookTargetArgs & {
+      destination_dir: string;
+      artifact_id?: string;
+      type?: string;
+      format?: StudioDownloadFormat;
+    }
+  ): Promise<ToolResult<{ result: StudioDownloadResult }>> {
+    return this.withNotebookSession("download_studio_artifact", args, async (s) => ({
+      result: await s.downloadStudio(
+        { artifactId: args.artifact_id, type: args.type, format: args.format },
+        args.destination_dir
+      ),
+    }));
   }
 
   /**
