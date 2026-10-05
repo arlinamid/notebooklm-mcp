@@ -268,6 +268,7 @@ Refresh the bundled packs with `npm run import:prompts`. `npm run import:prompts
 | Tool | Purpose |
 |---|---|
 | `configure_chat` | Read or set the notebook's persistent system instruction ("Configure Chat": goal, custom prompt, response length). Affects every later answer. |
+| `configure_output_language` | Read or set the account's output language (Settings → Output language): the language of answers and of Studio outputs that name none. With *Default* NotebookLM uses its interface language — English for this server — so set it when users expect another language. Accepts a code (`hu`), the listed name (`magyar`) or the English name (`Hungarian`). |
 | `get_usage` | AI usage & limits: rolling window and weekly limit, percent used and reset times. |
 
 NotebookLM meters AI usage (a rolling window that resets every few hours plus a weekly limit) instead of a fixed number of questions per day; when a limit is hit, `ask_question` points to `get_usage` for the reset time.

@@ -16,6 +16,8 @@ import type {
 import type { AddSourceResult } from "../notebooklm/sources.js";
 import type { BrowserSession, StudioDownloadResult } from "../session/browser-session.js";
 import type { StudioDownloadFormat } from "../notebooklm/studio-download.js";
+import { getOutputLanguageRpc, setOutputLanguageRpc } from "../notebooklm/rpc-ops.js";
+import { languageName, resolveLanguage } from "../notebooklm/language.js";
 import {
   STUDIO_TYPES,
   type GenerateStudioResult,
@@ -110,7 +112,12 @@ import type {
   AudioLength,
   DownloadAudioResult,
 } from "../notebooklm/audio.js";
-import { CONFIG, applyBrowserOptions, type BrowserOptions } from "../config.js";
+import {
+  CONFIG,
+  NOTEBOOKLM_BASE_URL,
+  applyBrowserOptions,
+  type BrowserOptions,
+} from "../config.js";
 import { log } from "../utils/logger.js";
 import type { AskQuestionResult, ToolResult, ProgressCallback } from "../types.js";
 import { RATE_LIMIT_MESSAGE, RateLimitError } from "../errors.js";
@@ -1606,6 +1613,69 @@ export class ToolHandlers {
   /**
    * Handle get_usage — AI usage & limits dialog.
    */
+  /**
+   * Handle configure_output_language — read or set the account's output
+   * language override (account-wide, so no notebook session is needed).
+   */
+  async handleConfigureOutputLanguage(args: { language?: string }): Promise<
+    ToolResult<{
+      language: string | null;
+      name: string | null;
+      previous: string | null;
+      changed: boolean;
+      note?: string;
+    }>
+  > {
+    log.info(`🔧 [TOOL] configure_output_language called (${args.language ?? "read"})`);
+    try {
+      let target: string | null | undefined;
+      if (args.language !== undefined) {
+        const wantsDefault =
+          !args.language.trim() || args.language.trim().toLowerCase() === "default";
+        const resolved = resolveLanguage(args.language);
+        if (!wantsDefault && !resolved) {
+          return {
+            success: false,
+            error:
+              `Unknown language "${args.language}". Use a code ("hu"), the name NotebookLM ` +
+              'lists ("magyar") or the English name ("Hungarian"), or "default".',
+          };
+        }
+        target = wantsDefault ? null : resolved!.code;
+      }
+      const { previous, current } = await this.sessionManager.withScratchPage(async (page) => {
+        await page.goto(NOTEBOOKLM_BASE_URL, { waitUntil: "domcontentloaded" });
+        if (/accounts\.google\.com|\/trynow/.test(page.url())) {
+          throw new Error("Not signed in to NotebookLM. Run setup_auth.");
+        }
+        const before = await getOutputLanguageRpc(page);
+        const after =
+          target === undefined || target === before
+            ? before
+            : await setOutputLanguageRpc(page, target);
+        return { previous: before, current: after };
+      });
+      return {
+        success: true,
+        data: {
+          language: current,
+          name: current ? languageName(current) : null,
+          previous,
+          changed: current !== previous,
+          ...(current === null && {
+            note:
+              "Default: NotebookLM answers and generates in its interface language, which is " +
+              "English for this server — set an output language if the user expects another one.",
+          }),
+        },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      log.error(`❌ [TOOL] configure_output_language failed: ${msg}`);
+      return { success: false, error: msg };
+    }
+  }
+
   async handleGetUsage(args: NotebookTargetArgs): Promise<ToolResult<{ usage: UsageInfo }>> {
     return this.withNotebookSession("get_usage", args, async (s) => ({
       usage: await s.getUsage(),

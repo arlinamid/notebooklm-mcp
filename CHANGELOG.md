@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `configure_output_language` — reads or sets the account's output language
+  (Settings → Output language) over the RPC API. It decides the language of
+  answers and of Studio outputs that do not name one. With *Default*,
+  NotebookLM uses its interface language, which is English for this server,
+  so a user expecting e.g. Hungarian silently got English; the tool says so
+  and sets an override. Accepts a code, the listed name or the English name.
+
 - One browser per Google account across server instances. When several MCP
   clients start the server on the same data directory (e.g. Claude Desktop's
   chat and Code tab), the first instance becomes the leader: it alone opens
@@ -31,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `generate_studio_artifact` starts audio, video, infographic and slide-deck
+  generations through the RPC API (`R7cb6c`, 4–6 s, no customise dialog) and
+  returns the new `artifactId`. Without a `language` it uses the account's
+  output language; reports, flashcards, quizzes, data tables, mind maps,
+  "Generate later" and options without a known code keep using the dialog,
+  as does a request when the account language is *Default*.
+- Studio `language` accepts a code (`hu`), the listed name (`magyar`) or the
+  English name (`Hungarian`) on both paths.
 - `add_source` adds pasted text, web URLs and YouTube URLs through the RPC
   API (4–6 s including the wait for processing and a tab refresh, instead of
   driving the Add-source dialog) and returns the new `sourceIds`. Ambiguous
@@ -47,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Studio dialog's language picker matched a bare prefix, so a short
+  code could choose the wrong language (`ja` → *Jawa* instead of Japanese)
+  and the output came out in that language. It now matches exact names or
+  `name (…)` only, after resolving codes and English names.
 - Two tool calls arriving at once on a fresh server both launched the
   browser; the second failed (`launchPersistentContext … closed`). Browser
   start-up is now shared by concurrent callers.

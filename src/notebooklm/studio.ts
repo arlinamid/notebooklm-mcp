@@ -21,6 +21,7 @@ import { safeSleep } from "../browser/watchdog.js";
 import { log } from "../utils/logger.js";
 import { ensureStudioListView } from "./notes.js";
 import { resolveSourceIds } from "./source-select.js";
+import { resolveLanguage } from "./language.js";
 
 /**
  * Studio output types. `icon` is the Material-Symbols glyph used both on the
@@ -144,6 +145,8 @@ export interface GenerateStudioResult {
   usagePercent?: number | null;
   /** Source titles actually selected, when `sources` was given. */
   sources?: string[];
+  /** Id of the new Studio item (RPC path; matches list_studio_artifacts). */
+  artifactId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -451,11 +454,15 @@ export async function pickLanguage(page: Page, language: string): Promise<void> 
   const options = page.locator("mat-option");
   await options.first().waitFor({ state: "visible", timeout: 3_000 });
   const texts = (await options.allInnerTexts()).map((t) => t.trim());
-  const want = language.trim().toLowerCase();
-  // Exact name first, then "magyar (default)"-style prefixes.
+  // The dialog lists own names ("magyar"); accept codes and English names too.
+  // Only exact names or "magyar (default)"-style suffixes match — a bare
+  // prefix let "ja" pick "Jawa".
+  const wants = [language, resolveLanguage(language)?.name]
+    .filter((w): w is string => !!w)
+    .map((w) => w.trim().toLowerCase());
   const name =
-    texts.find((t) => t.toLowerCase() === want) ??
-    texts.find((t) => t.toLowerCase().startsWith(want));
+    texts.find((t) => wants.includes(t.toLowerCase())) ??
+    texts.find((t) => wants.some((w) => t.toLowerCase().startsWith(`${w} (`)));
   if (!name) {
     await page.keyboard.press("Escape").catch(() => undefined);
     throw new Error(
