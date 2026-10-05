@@ -14,7 +14,8 @@ import type {
   UpdateNotebookInput,
 } from "../library/types.js";
 import type { AddSourceResult } from "../notebooklm/sources.js";
-import type { BrowserSession } from "../session/browser-session.js";
+import type { BrowserSession, StudioDownloadResult } from "../session/browser-session.js";
+import type { StudioDownloadFormat } from "../notebooklm/studio-download.js";
 import {
   STUDIO_TYPES,
   type GenerateStudioResult,
@@ -1450,6 +1451,25 @@ export class ToolHandlers {
       return { success: false, data: res.data, error: res.data.result.message };
     }
     return res;
+  }
+
+  /**
+   * Handle download_studio_artifact — save any finished Studio output.
+   */
+  async handleDownloadStudioArtifact(
+    args: NotebookTargetArgs & {
+      destination_dir: string;
+      artifact_id?: string;
+      type?: string;
+      format?: StudioDownloadFormat;
+    }
+  ): Promise<ToolResult<{ result: StudioDownloadResult }>> {
+    return this.withNotebookSession("download_studio_artifact", args, async (s) => ({
+      result: await s.downloadStudio(
+        { artifactId: args.artifact_id, type: args.type, format: args.format },
+        args.destination_dir
+      ),
+    }));
   }
 
   /**

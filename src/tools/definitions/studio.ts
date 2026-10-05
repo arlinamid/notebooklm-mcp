@@ -400,6 +400,67 @@ export const deleteStudioArtifactTool: Tool = {
   },
 };
 
+export const downloadStudioArtifactTool: Tool = {
+  name: "download_studio_artifact",
+  description:
+    "Save a finished Studio output to disk. Works for every type, through " +
+    "NotebookLM's own data API (no menu clicks):\n" +
+    "  • audio → .m4a · video → .mp4 · infographic → .png\n" +
+    "  • slide_deck → .pdf (default) or .pptx (`format`)\n" +
+    "  • report → .md · data_table → .csv (.xlsx for spreadsheet exports)\n" +
+    "  • quiz / flashcards → .md (default), .json or .html (`format`)\n" +
+    "  • mind_map → .json (node tree)\n\n" +
+    "Identify the item with `artifact_id` (the `id` from " +
+    "`list_studio_artifacts`; a unique prefix is enough) or with `type` for " +
+    "the newest finished item of that type. The file is named after the " +
+    "item's title; an existing file is not overwritten (a ` (2)` suffix is " +
+    "added). Returns `file_path`, `bytes` and the item.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      destination_dir: {
+        type: "string",
+        description: "Absolute directory to save into (created if missing).",
+      },
+      artifact_id: {
+        type: "string",
+        description: "Studio item id from `list_studio_artifacts` (or a unique prefix).",
+      },
+      type: {
+        type: "string",
+        enum: [
+          "audio",
+          "video",
+          "infographic",
+          "slide_deck",
+          "report",
+          "data_table",
+          "quiz",
+          "flashcards",
+          "mind_map",
+        ],
+        description: "Without `artifact_id`: download the newest finished item of this type.",
+      },
+      format: {
+        type: "string",
+        enum: ["pdf", "pptx", "markdown", "json", "html"],
+        description:
+          "slide_deck: pdf (default) | pptx. quiz / flashcards: markdown (default) | json | html.",
+      },
+      ...showBrowser,
+      ...sharedNotebookTargeting,
+    },
+    required: ["destination_dir"],
+  },
+  annotations: {
+    title: "Download Studio output",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+};
+
 export const studioTools: Tool[] = [
   deleteSourceTool,
   deleteStudioArtifactTool,
@@ -408,6 +469,7 @@ export const studioTools: Tool[] = [
   convertNoteToSourceTool,
   generateStudioArtifactTool,
   listStudioArtifactsTool,
+  downloadStudioArtifactTool,
   getUsageTool,
   configureChatTool,
 ];

@@ -80,7 +80,24 @@ import { log } from "../utils/logger.js";
 import type { SessionInfo, ProgressCallback } from "../types.js";
 import { RateLimitError } from "../errors.js";
 import { PageLock } from "../utils/page-lock.js";
+import fs from "fs/promises";
+import path from "path";
+import {
+  resolveStudioDownload,
+  studioFileName,
+  type StudioDownloadFormat,
+  type StudioDownloadTarget,
+} from "../notebooklm/studio-download.js";
+import { notebookUuidFromUrl } from "../notebooklm/account-notebooks.js";
 import { abortable, reportProgress } from "../utils/request-context.js";
+
+export interface StudioDownloadResult {
+  artifact: StudioDownloadTarget;
+  file_path: string;
+  bytes: number;
+  /** File extension written (m4a, mp4, png, pdf, pptx, md, csv, json, xlsx, html). */
+  format: string;
+}
 
 /** How often `generateAudio({ waitForCompletion })` checks the render. */
 const AUDIO_POLL_MS = 15_000;
@@ -774,6 +791,55 @@ export class BrowserSession {
    */
   async downloadAudio(destinationDir: string): Promise<DownloadAudioResult> {
     return this.onPage("download_audio", (page) => downloadAudioOnPage(page, destinationDir));
+  }
+
+  /**
+   * Save a Studio output to `destinationDir` via the RPC API. Only the lookup
+   * holds the tab; media files are fetched with the context's HTTP client.
+   */
+  async downloadStudio(
+    want: { artifactId?: string; type?: string; format?: StudioDownloadFormat },
+    destinationDir: string
+  ): Promise<StudioDownloadResult> {
+    const notebookId = notebookUuidFromUrl(this.notebookUrl);
+    if (!notebookId) throw new Error(`Not a notebook URL: ${this.notebookUrl}`);
+    const plan = await this.onPage("download_studio_artifact", (page) =>
+      resolveStudioDownload(page, notebookId, want)
+    );
+
+    let body: Buffer;
+    if (plan.kind === "text") {
+      body = Buffer.from(plan.content, "utf8");
+    } else {
+      const resp = await abortable(
+        this.context.request.get(plan.url, { timeout: 600_000, maxRedirects: 10 })
+      );
+      const type = resp.headers()["content-type"] ?? "";
+      if (!resp.ok() || type.startsWith("text/html")) {
+        throw new Error(
+          `Download of ${plan.artifact.type} failed (HTTP ${resp.status()}${type ? `, ${type}` : ""}). ` +
+            "A freshly finished render can take a minute to propagate — retry shortly."
+        );
+      }
+      body = await resp.body();
+    }
+
+    await fs.mkdir(destinationDir, { recursive: true });
+    const name = studioFileName(plan.artifact, plan.ext);
+    let filePath = path.join(destinationDir, name);
+    for (
+      let n = 2;
+      await fs.stat(filePath).then(
+        () => true,
+        () => false
+      );
+      n++
+    ) {
+      filePath = path.join(destinationDir, name.replace(/(\.[^.]+)$/, ` (${n})$1`));
+    }
+    await fs.writeFile(filePath, body);
+    log.success(`  ✅ ${plan.artifact.type} saved: ${filePath} (${body.length} bytes)`);
+    return { artifact: plan.artifact, file_path: filePath, bytes: body.length, format: plan.ext };
   }
 
   /**
