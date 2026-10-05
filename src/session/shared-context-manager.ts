@@ -69,6 +69,23 @@ export class SharedContextManager {
    * @param overrideHeadless Optional override for headless mode (true = show browser)
    */
   async getOrCreateContext(overrideHeadless?: boolean): Promise<BrowserContext> {
+    // Concurrent first calls must share one launch: two launchPersistentContext
+    // calls on the same profile make the second one fail.
+    const previous = this.contextReady;
+    let done!: () => void;
+    this.contextReady = new Promise<void>((resolve) => (done = resolve));
+    try {
+      await previous;
+      return await this.getOrCreateContextUnlocked(overrideHeadless);
+    } finally {
+      done();
+    }
+  }
+
+  /** Serialises getOrCreateContext calls. */
+  private contextReady: Promise<void> = Promise.resolve();
+
+  private async getOrCreateContextUnlocked(overrideHeadless?: boolean): Promise<BrowserContext> {
     // Check if headless mode needs to be changed (e.g., show_browser=true)
     // If yes, close the browser so it gets recreated with the new mode
     if (this.needsHeadlessModeChange(overrideHeadless)) {

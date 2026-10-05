@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- One browser per Google account across server instances. When several MCP
+  clients start the server on the same data directory (e.g. Claude Desktop's
+  chat and Code tab), the first instance becomes the leader: it alone opens
+  Chrome and writes the library, and serves a token-protected endpoint on
+  127.0.0.1. The others forward tool calls to it and relay its elicitation,
+  sampling, roots and progress to their own client. Previously the second
+  instance fell back to an isolated profile seeded with saved cookies, so one
+  Google session ran in two browsers at once. A dead leader is replaced on
+  the next call. `NOTEBOOKLM_SINGLE_BROWSER=false` opts out.
 - `download_studio_artifact` — saves any finished Studio output: audio
   (`.m4a`), video (`.mp4`), infographic (`.png`), slide deck (`.pdf` or
   `.pptx`), report (`.md`), data table (`.csv`, `.xlsx` exports), quiz and
@@ -32,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Two tool calls arriving at once on a fresh server both launched the
+  browser; the second failed (`launchPersistentContext … closed`). Browser
+  start-up is now shared by concurrent callers.
 - `ask_question` hung until the timeout when the new answer was word for
   word identical to an earlier one in the chat (asking the same question
   again often gives the same answer): prior answers were recognised by text

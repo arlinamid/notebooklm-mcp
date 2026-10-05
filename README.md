@@ -208,6 +208,10 @@ Each account gets its own subtree under `<dataDir>/accounts/<name>/` — separat
 
 There is no encrypted credential store — isolation is purely by Chrome profile directory.
 
+### Several clients on one account
+
+When several MCP clients each start the server on the same data directory (for example Claude Desktop's chat and its Code tab), only one instance — the *leader*, the first one started — opens Chrome and writes the library. The others forward their tool calls to it over a token-protected endpoint on `127.0.0.1`, and relay its approval prompts (elicitation), sampling requests, file roots and progress back to their own client. So one Google session runs in one browser instead of several (Google may sign out a session that shows up in two browsers at once). If the leader exits, the next call elects a new one. All instances must run a version with this feature; set `NOTEBOOKLM_SINGLE_BROWSER=false` to opt out. Different `--account`s have their own data directory and leader.
+
 ---
 
 ## Tools
@@ -455,6 +459,7 @@ All configuration is via environment variables and tool parameters. There is no 
 | `NOTEBOOKLM_REQUIRE_FILE_ROOTS` | `false` | `true` = refuse local file access when neither the client nor `NOTEBOOKLM_FILE_ROOTS` gives a root. |
 | `NOTEBOOKLM_CLIENT_LOG_LEVEL` | `warning` | Minimum level forwarded to the client as log notifications until it calls `logging/setLevel`. |
 | `NOTEBOOKLM_SUBSCRIPTION_POLL_MS` | `60000` | Poll interval for subscribed notebook resources (minimum 15000). |
+| `NOTEBOOKLM_SINGLE_BROWSER` | `true` | `false` = every instance runs its own browser instead of forwarding to the leader instance (see [Several clients on one account](#several-clients-on-one-account)). |
 | `NOTEBOOKLM_NO_SANDBOX` | _(auto)_ | `true` / `false` forces Chrome's `--no-sandbox`. Auto: on under WSL and for root on Linux, off elsewhere. |
 
 ---
