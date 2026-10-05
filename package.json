@@ -1,6 +1,6 @@
 {
   "name": "@arlinamid/notebooklm-mcp",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "MCP server for Google NotebookLM / Gemini Notebook — chat with citations, sources, every Studio output, notes, prompt templates, stdio + Streamable-HTTP transports.",
   "type": "module",
   "bin": {
