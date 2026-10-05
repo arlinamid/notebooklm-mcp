@@ -72,6 +72,7 @@ The default flow is interactive — `setup_auth` opens a browser and the user si
 
 | Variable | Type | Default | Purpose |
 |---|---|---|---|
+| `NOTEBOOKLM_USE_RPC` | bool | `true` | `false` = use the web UI instead of NotebookLM's data API wherever both exist (ask, usage, chat settings, notebook import, add source, Studio generation). |
 | `NOTEBOOKLM_SINGLE_BROWSER` | bool | `true` | Instances on one data directory share one browser: the first (leader) owns Chrome and the library, the others forward tool calls to it on a token-protected `127.0.0.1` endpoint. `false` = standalone instances. |
 | `NOTEBOOK_PROFILE_STRATEGY` | enum | `auto` | `auto` (isolate when base is locked), `single` (always base), `isolated` (always per-instance). |
 | `NOTEBOOK_CLONE_PROFILE` | bool | `false` | Clone the base profile into the isolated dir on first use. |
