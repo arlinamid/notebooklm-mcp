@@ -16,7 +16,7 @@ import { Selectors } from "./selectors.js";
 import { safeSleep } from "../browser/watchdog.js";
 import { NOTEBOOKLM_BASE_URL } from "../config.js";
 import { log } from "../utils/logger.js";
-import { RpcError } from "./rpc.js";
+import { RpcError, rpcEnabled } from "./rpc.js";
 import { listAccountNotebooksRpc } from "./rpc-ops.js";
 
 export type AccountNotebookScope = "mine" | "shared";
@@ -57,7 +57,7 @@ export async function listAccountNotebooks(
   // One RPC returns every notebook with owner/created data; the homepage
   // filters below are the fallback for when Google rotates the RPC id.
   try {
-    return await listAccountNotebooksRpc(page, scopes);
+    if (rpcEnabled()) return await listAccountNotebooksRpc(page, scopes);
   } catch (error) {
     if (!(error instanceof RpcError) || error.code === 16) throw error;
     log.warning(`  ⚠️  Notebook list RPC failed (${error.message}) — reading the homepage instead`);

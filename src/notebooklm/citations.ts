@@ -180,7 +180,7 @@ async function extractExcerpt(page: Page, number: number): Promise<string> {
   }
 }
 
-function formatAnswer(answer: string, citations: Citation[], format: SourceFormat): string {
+export function formatAnswer(answer: string, citations: Citation[], format: SourceFormat): string {
   if (format === "none" || citations.length === 0) return answer;
 
   switch (format) {

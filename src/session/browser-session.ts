@@ -60,6 +60,7 @@ import {
 } from "../notebooklm/chat-config.js";
 import {
   extractCitations as extractCitationsFromPage,
+  formatAnswer,
   type SourceFormat,
   type ExtractCitationsResult,
 } from "../notebooklm/citations.js";
@@ -91,7 +92,8 @@ import {
   type StudioDownloadTarget,
 } from "../notebooklm/studio-download.js";
 import { notebookUuidFromUrl } from "../notebooklm/account-notebooks.js";
-import { RpcError } from "../notebooklm/rpc.js";
+import { RpcError, rpcEnabled } from "../notebooklm/rpc.js";
+import { askRpc } from "../notebooklm/chat-rpc.js";
 import { addSourcesRpc, configureChatRpc, readUsageRpc } from "../notebooklm/rpc-ops.js";
 import { generateStudioRpc } from "../notebooklm/studio-rpc.js";
 import { abortable, reportProgress } from "../utils/request-context.js";
@@ -102,6 +104,14 @@ export interface StudioDownloadResult {
   bytes: number;
   /** File extension written (m4a, mp4, png, pdf, pptx, md, csv, json, xlsx, html). */
   format: string;
+}
+
+/** NotebookLM's canned failure reply as an error (see detectFailureReply). */
+function failureReplyError(reply: string): Error {
+  return new Error(
+    `NotebookLM did not answer ("${reply}"). Usually temporary — retry in a ` +
+      "minute. If it persists, the Google session may need a fresh login: run setup_auth."
+  );
 }
 
 /** How often `generateAudio({ waitForCompletion })` checks the render. */
@@ -123,6 +133,8 @@ export class BrowserSession {
   private initialized: boolean = false;
   /** Serialises tool calls that drive this tab (see PageLock). */
   private lock = new PageLock();
+  /** The tab's chat is missing answers asked over RPC (reload before reading it). */
+  private chatStale = false;
 
   constructor(
     sessionId: string,
@@ -247,6 +259,7 @@ export class BrowserSession {
       await dismissPromoDialogs(this.page);
 
       this.initialized = true;
+      this.chatStale = false;
       this.updateActivity();
       log.success(`✅ Session ${this.sessionId} initialized successfully`);
     } catch (error) {
@@ -473,7 +486,7 @@ export class BrowserSession {
     sendProgress?: ProgressCallback,
     options: { sources?: string[] } = {}
   ): Promise<string> {
-    return this.exclusive("ask_question", () => this.askUnlocked(question, sendProgress, options));
+    return (await this.askWithCitations(question, "none", sendProgress, options)).formattedAnswer;
   }
 
   /**
@@ -487,9 +500,41 @@ export class BrowserSession {
     options: { sources?: string[] } = {}
   ): Promise<ExtractCitationsResult> {
     return this.exclusive("ask_question", async () => {
+      const viaRpc = await this.askViaRpc(question, format, sendProgress, options);
+      if (viaRpc) return viaRpc;
       const answer = await this.askUnlocked(question, sendProgress, options);
       return this.extractCitationsUnlocked(answer, format);
     });
+  }
+
+  /**
+   * Ask over the data API: no typing, no DOM answer detection, scoping
+   * without touching the checkboxes. Null → the caller types the question.
+   */
+  private async askViaRpc(
+    question: string,
+    format: SourceFormat,
+    sendProgress?: ProgressCallback,
+    options: { sources?: string[] } = {}
+  ): Promise<ExtractCitationsResult | null> {
+    if (!this.initialized || !this.page || this.isPageClosedSafe()) await this.init();
+    await sendProgress?.("Asking NotebookLM...", 3, 5);
+    const res = await this.tryRpc("ask_question", () =>
+      askRpc(this.page!, this.notebookId(), question, options.sources)
+    );
+    if (!res) return null;
+    const failure = detectFailureReply(res.answer);
+    if (failure) throw failureReplyError(failure);
+    this.lastScopedSources = res.scopedTo;
+    this.messageCount++;
+    // The tab's chat only shows this Q&A after a reload.
+    this.chatStale = true;
+    this.updateActivity();
+    log.success(`✅ [${this.sessionId}] Received answer via RPC (${res.answer.length} chars)`);
+    return {
+      citations: format === "none" ? [] : res.citations,
+      formattedAnswer: formatAnswer(res.answer, res.citations, format),
+    };
   }
 
   private async askUnlocked(
@@ -598,12 +643,7 @@ export class BrowserSession {
       }
 
       const failure = detectFailureReply(answer);
-      if (failure) {
-        throw new Error(
-          `NotebookLM did not answer ("${failure}"). Usually temporary — retry in a ` +
-            "minute. If it persists, the Google session may need a fresh login: run setup_auth."
-        );
-      }
+      if (failure) throw failureReplyError(failure);
 
       // Check for rate limit errors AFTER receiving answer
       log.info(`  🔍 Checking for rate limit errors...`);
@@ -695,6 +735,7 @@ export class BrowserSession {
    */
   private async reloadPage(page: Page, expectedSources: number): Promise<void> {
     await page.reload({ waitUntil: "domcontentloaded", timeout: CONFIG.browserTimeout });
+    this.chatStale = false;
     await this.waitForNotebookLMReady();
     await dismissPromoDialogs(page);
     const rows = page.locator(Selectors.sources.sourceContainer);
@@ -814,6 +855,11 @@ export class BrowserSession {
    */
   async saveAnswerAsNote(question?: string): Promise<SavedNote> {
     return this.onPage("save_answer_as_note", async (page) => {
+      // Answers asked over RPC are not in the tab's chat until it reloads.
+      if (this.chatStale) {
+        await this.reloadPage(page, 0);
+        this.chatStale = false;
+      }
       await dismissPromoDialogs(page);
       return await saveAnswerAsNoteOnPage(page, question);
     });
@@ -869,6 +915,7 @@ export class BrowserSession {
    * input, auth) are real and propagate.
    */
   private async tryRpc<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
+    if (!rpcEnabled()) return null;
     try {
       return await fn();
     } catch (error) {
@@ -1177,6 +1224,7 @@ export class BrowserSession {
 
       // Reset message count
       this.messageCount = 0;
+      this.chatStale = false;
       this.updateActivity();
 
       log.success(`✅ [${this.sessionId}] Chat history reset`);

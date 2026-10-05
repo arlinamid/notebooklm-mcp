@@ -28,6 +28,14 @@ export const RPC = {
   getArtifact: "v9rmvd",
 } as const;
 
+/**
+ * False when NOTEBOOKLM_USE_RPC=false: operations that have a UI path use it
+ * instead (a kill switch should Google change the protocol).
+ */
+export function rpcEnabled(): boolean {
+  return process.env.NOTEBOOKLM_USE_RPC?.toLowerCase() !== "false";
+}
+
 export class RpcError extends Error {
   constructor(
     message: string,

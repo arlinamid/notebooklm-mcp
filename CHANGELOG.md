@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `NOTEBOOKLM_USE_RPC=false` switches every operation that has both paths
+  back to the web UI — a kill switch should Google change the protocol.
 - `configure_output_language` — reads or sets the account's output language
   (Settings → Output language) over the RPC API. It decides the language of
   answers and of Studio outputs that do not name one. With *Default*,
@@ -38,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ask_question` asks through NotebookLM's streamed query endpoint instead of
+  typing into the chat box and watching the page for the answer: 10–15 s
+  instead of 20–25 s, no answer-detection heuristics, and `sources` scoping
+  sends source ids without touching the notebook's checkbox selection. The
+  notebook's server conversation is continued with its history, so
+  follow-ups keep context and the Q&A appears in NotebookLM's own chat.
+  **Answers are now Markdown** (e.g. `**bold**`); citation markers stay `[N]`
+  (ranges like `[1-3]` are expanded). `save_answer_as_note` reloads the tab
+  first so it saves the latest answer. Falls back to typing when the RPC fails.
 - `generate_studio_artifact` starts audio, video, infographic and slide-deck
   generations through the RPC API (`R7cb6c`, 4–6 s, no customise dialog) and
   returns the new `artifactId`. Without a `language` it uses the account's
