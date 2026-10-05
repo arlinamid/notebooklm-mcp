@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `add_source` adds pasted text, web URLs and YouTube URLs through the RPC
+  API (4–6 s including the wait for processing and a tab refresh, instead of
+  driving the Add-source dialog) and returns the new `sourceIds`. Ambiguous
+  replies are reconciled against the notebook before anything is retried,
+  so a source is never added twice; file uploads and RPC failures use the
+  dialog as before.
 - `get_usage`, `configure_chat` and `import_account_notebooks` use
   NotebookLM's data API instead of menus and dialogs, falling back to the UI
   when an RPC id changes: usage takes 0.4 s instead of opening Settings →

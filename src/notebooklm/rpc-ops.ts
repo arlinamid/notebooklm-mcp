@@ -11,6 +11,8 @@
  *   s0tc2d  ← [id, [[null ×7, [[goal, prompt?], [length]]]]] → notebook (same layout)
  *   wXbhsf  → [[[title, sources, id, emoji, null, meta], …]]; meta[0] 1 = owned,
  *             meta[8] = created [sec, ns]
+ *   izAoDd  ← [[sourceData…], id, [2], settings] → [[[[sourceId], title, meta, [null, status]]…]]
+ *   tGMBJ / V5N4be are not used: deletions stay on the server-acknowledged UI path
  *   chat goal 1 default · 2 custom · 3 learning guide; length 1 default · 4 longer · 5 shorter
  */
 
@@ -161,4 +163,155 @@ export async function listAccountNotebooksRpc(
       };
     })
     .filter((nb) => scopes.includes(nb.scope));
+}
+
+// ---------------------------------------------------------------------------
+// Sources
+
+const RPC_ADD_SOURCE = "izAoDd";
+const RPC_ADD_SOURCE_V2 = "ozz5Z";
+const ADD_SETTINGS = [1, null, null, null, null, null, null, null, null, null, [1]];
+/** rLM1Ne source status (`src[3][1]`): 1 processing · 2 ready · 3 error · 5 preparing. */
+const SOURCE_READY = 2;
+const SOURCE_FAILED = 3;
+
+export interface RpcSourceAddResult {
+  ids: string[];
+  titles: string[];
+  before: number;
+  after: number;
+  /** Sources still processing when the wait ended (usable once ready). */
+  pending: string[];
+  failed: string[];
+}
+
+type RawSource = unknown[];
+
+async function listRawSources(page: Page, notebookId: string): Promise<RawSource[]> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_NOTEBOOK,
+    [notebookId, null, [2], null, 0],
+    `/notebook/${notebookId}`
+  );
+  const list = at(res, 0, 1);
+  if (!Array.isArray(list)) throw new RpcError("unexpected notebook response", RPC_NOTEBOOK);
+  return list.filter((s): s is RawSource => Array.isArray(s) && typeof at(s, 0, 0) === "string");
+}
+
+const sourceId = (s: RawSource) => at(s, 0, 0) as string;
+const sourceStatus = (s: RawSource) => Number(at(s, 3, 1) ?? SOURCE_READY);
+
+/**
+ * Add pasted text, web URLs or YouTube URLs as sources, then wait (up to
+ * `waitMs`) until NotebookLM has processed them. An ambiguous reply (codes 3
+ * and 9 can mean "accepted, still processing") is reconciled against the
+ * notebook before anything is retried, so a source is never added twice.
+ */
+export async function addSourcesRpc(
+  page: Page,
+  notebookId: string,
+  input: { type: "text" | "url" | "youtube"; content: string; title?: string },
+  waitMs = 90_000
+): Promise<RpcSourceAddResult> {
+  const path = `/notebook/${notebookId}`;
+  const before = await listRawSources(page, notebookId);
+  const known = new Set(before.map(sourceId));
+
+  const urls = input.content.split(/\s+/).filter(Boolean);
+  const entries =
+    input.type === "text"
+      ? [
+          [
+            null,
+            [input.title?.trim() || "Pasted text", input.content],
+            null,
+            2,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            1,
+          ],
+        ]
+      : urls.map((url) =>
+          input.type === "youtube" || /youtube\.com|youtu\.be/i.test(url)
+            ? [null, null, null, null, null, null, null, [url], null, null, 1]
+            : [null, null, [url], null, null, null, null, null, null, null, 1]
+        );
+  if (entries.length === 0) throw new Error(`\`content\` is required for type "${input.type}".`);
+
+  let ids: string[] = [];
+  try {
+    const res = await callRpc<unknown[]>(
+      page,
+      RPC_ADD_SOURCE,
+      [entries, notebookId, [2], ADD_SETTINGS],
+      path
+    );
+    ids = ((at(res, 0) as unknown[]) ?? [])
+      .map((s) => at(s, 0, 0))
+      .filter((v): v is string => typeof v === "string");
+  } catch (error) {
+    if (!(error instanceof RpcError) || (error.code !== 3 && error.code !== 9)) throw error;
+    ids = await newSourceIds(page, notebookId, known, entries.length);
+    if (ids.length === 0 && input.type !== "text") {
+      // The legacy endpoint really rejected it; accounts on the newer one take URLs here.
+      await callRpc(
+        page,
+        RPC_ADD_SOURCE_V2,
+        [
+          urls.map((u) => [
+            [null, u, 627],
+            [null, null, null, null, null, null, null, null, null, [null, null, 1]],
+            1,
+          ]),
+        ],
+        path
+      ).catch(() => undefined);
+    }
+    if (ids.length === 0) ids = await newSourceIds(page, notebookId, known, entries.length);
+    if (ids.length === 0) throw error;
+  }
+  if (ids.length === 0) ids = await newSourceIds(page, notebookId, known, entries.length);
+  if (ids.length === 0) throw new RpcError("source add returned no id", RPC_ADD_SOURCE);
+
+  // Wait for processing (web pages and videos take a while).
+  const deadline = Date.now() + waitMs;
+  let current = await listRawSources(page, notebookId);
+  for (;;) {
+    const mine = current.filter((s) => ids.includes(sourceId(s)));
+    const busy = mine.filter((s) => ![SOURCE_READY, SOURCE_FAILED].includes(sourceStatus(s)));
+    if (busy.length === 0 || Date.now() > deadline) {
+      return {
+        ids,
+        titles: mine.map((s) => String(s[1] ?? "")),
+        before: before.length,
+        after: current.length,
+        pending: busy.map(sourceId),
+        failed: mine.filter((s) => sourceStatus(s) === SOURCE_FAILED).map(sourceId),
+      };
+    }
+    await page.waitForTimeout(2_000);
+    current = await listRawSources(page, notebookId);
+  }
+}
+
+/** Ids of sources that appeared since `known` (polls briefly for late arrivals). */
+async function newSourceIds(
+  page: Page,
+  notebookId: string,
+  known: Set<string>,
+  expected: number
+): Promise<string[]> {
+  for (let i = 0; i < 6; i++) {
+    const fresh = (await listRawSources(page, notebookId))
+      .map(sourceId)
+      .filter((id) => !known.has(id));
+    if (fresh.length >= expected || (i >= 3 && fresh.length > 0)) return fresh;
+    await page.waitForTimeout(1_500);
+  }
+  return [];
 }
