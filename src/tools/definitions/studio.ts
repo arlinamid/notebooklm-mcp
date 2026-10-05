@@ -177,10 +177,11 @@ export const listStudioArtifactsTool: Tool = {
 export const getUsageTool: Tool = {
   name: "get_usage",
   description:
-    'Read the "AI Usage & Limits" dialog (Settings → Usage). Gemini Notebook ' +
-    "meters AI usage instead of a fixed daily query count: a short rolling window " +
-    "(resets every few hours) and a weekly limit. Returns both percentages and " +
-    "their reset times as shown in the UI. Read-only.",
+    "Read the AI usage & limits. Gemini Notebook meters AI usage instead of a " +
+    "fixed daily query count: a short rolling window (resets every few hours) " +
+    "and a weekly limit. Returns both as `percentUsed` with `resets` as an ISO " +
+    "8601 time (read from NotebookLM's data API; if that changes, the Settings → " +
+    "Usage dialog is read instead and `resets` is the dialog text). Read-only.",
   inputSchema: {
     type: "object",
     properties: { ...showBrowser, ...sharedNotebookTargeting },
