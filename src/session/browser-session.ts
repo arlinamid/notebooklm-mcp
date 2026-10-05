@@ -81,6 +81,7 @@ import { log } from "../utils/logger.js";
 import type { SessionInfo, ProgressCallback } from "../types.js";
 import { RateLimitError } from "../errors.js";
 import { PageLock } from "../utils/page-lock.js";
+import { Selectors } from "../notebooklm/selectors.js";
 import fs from "fs/promises";
 import path from "path";
 import {
@@ -91,7 +92,7 @@ import {
 } from "../notebooklm/studio-download.js";
 import { notebookUuidFromUrl } from "../notebooklm/account-notebooks.js";
 import { RpcError } from "../notebooklm/rpc.js";
-import { configureChatRpc, readUsageRpc } from "../notebooklm/rpc-ops.js";
+import { addSourcesRpc, configureChatRpc, readUsageRpc } from "../notebooklm/rpc-ops.js";
 import { abortable, reportProgress } from "../utils/request-context.js";
 
 export interface StudioDownloadResult {
@@ -654,7 +655,51 @@ export class BrowserSession {
    * without first running `ask()`.
    */
   async addSource(input: AddSourceInput): Promise<AddSourceResult> {
-    return this.onPage("add_source", (page) => addSourceToPage(page, input));
+    return this.onPage("add_source", async (page) => {
+      if (input.type !== "file" && input.content.trim()) {
+        const type = input.type;
+        const viaRpc = await this.tryRpc("add_source", () =>
+          addSourcesRpc(page, this.notebookId(), {
+            type,
+            content: input.content,
+            title: input.title,
+          })
+        );
+        if (viaRpc) {
+          // The sidebar does not learn about sources added outside the UI;
+          // reload so source listing and scoping see them.
+          await this.reloadPage(page, viaRpc.after);
+          const ok = viaRpc.failed.length === 0;
+          return {
+            success: ok,
+            type: input.type,
+            sourceCountBefore: viaRpc.before,
+            sourceCountAfter: viaRpc.after,
+            sourceIds: viaRpc.ids,
+            message: !ok
+              ? `NotebookLM could not process: ${viaRpc.failed.join(", ")}`
+              : viaRpc.pending.length
+                ? `Added; still processing: ${viaRpc.titles.join(", ")} — usable shortly.`
+                : `Added: ${viaRpc.titles.join(", ")}`,
+          };
+        }
+      }
+      return addSourceToPage(page, input);
+    });
+  }
+
+  /**
+   * Reload the notebook tab and wait until it is usable again — including the
+   * source list, which renders after the chat input (`expectedSources` rows).
+   */
+  private async reloadPage(page: Page, expectedSources: number): Promise<void> {
+    await page.reload({ waitUntil: "domcontentloaded", timeout: CONFIG.browserTimeout });
+    await this.waitForNotebookLMReady();
+    await dismissPromoDialogs(page);
+    const rows = page.locator(Selectors.sources.sourceContainer);
+    for (let i = 0; i < 40 && (await rows.count()) < expectedSources; i++) {
+      await page.waitForTimeout(500);
+    }
   }
 
   /**

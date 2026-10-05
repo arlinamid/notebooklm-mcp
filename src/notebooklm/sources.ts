@@ -61,6 +61,8 @@ export interface AddSourceResult {
   sourceCountBefore: number;
   sourceCountAfter: number;
   message?: string;
+  /** Ids of the added sources (RPC path; usable in `sources` arguments). */
+  sourceIds?: string[];
 }
 
 export async function addSource(page: Page, input: AddSourceInput): Promise<AddSourceResult> {
