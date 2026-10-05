@@ -20,8 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   follows the protocol mapping of gemini-notebook-mcp-cli (MIT); see
   THIRD_PARTY_NOTICES.md.
 
+### Changed
+
+- `get_usage`, `configure_chat` and `import_account_notebooks` use
+  NotebookLM's data API instead of menus and dialogs, falling back to the UI
+  when an RPC id changes: usage takes 0.4 s instead of opening Settings →
+  Usage (`resets` is now an ISO 8601 time), chat settings are read and
+  written directly (0.5–1 s, verified by reading them back), and the
+  account's notebooks come from one call (≈2 s instead of ≈13 s of homepage
+  filtering, with no viewport or filter-state dependence).
+
 ### Fixed
 
+- `ask_question` hung until the timeout when the new answer was word for
+  word identical to an earlier one in the chat (asking the same question
+  again often gives the same answer): prior answers were recognised by text
+  only. A new answer bubble now counts as new even with identical text.
 - Concurrent tool calls on the same session no longer drive its browser tab
   at the same time (two calls clicking in one tab closed each other's
   dialogs and panels). Each session now has a FIFO queue: page interactions

@@ -1,6 +1,7 @@
 /**
- * Notebooks of the signed-in Google account, read from the NotebookLM
- * homepage (2026-10 "Gemini Notebook" layout).
+ * Notebooks of the signed-in Google account. Read with one RPC
+ * (`listAccountNotebooksRpc`); the homepage scrape below is the fallback for
+ * when that RPC changes (2026-10 "Gemini Notebook" layout).
  *
  * The homepage opens on "All" (Featured + a handful of recent notebooks), so
  * the full listing needs a filter button: "My notebooks" or "Shared with me".
@@ -15,6 +16,8 @@ import { Selectors } from "./selectors.js";
 import { safeSleep } from "../browser/watchdog.js";
 import { NOTEBOOKLM_BASE_URL } from "../config.js";
 import { log } from "../utils/logger.js";
+import { RpcError } from "./rpc.js";
+import { listAccountNotebooksRpc } from "./rpc-ops.js";
 
 export type AccountNotebookScope = "mine" | "shared";
 
@@ -51,6 +54,15 @@ export async function listAccountNotebooks(
       "Not signed in to NotebookLM (homepage redirected to the sign-in page). Run setup_auth."
     );
   }
+  // One RPC returns every notebook with owner/created data; the homepage
+  // filters below are the fallback for when Google rotates the RPC id.
+  try {
+    return await listAccountNotebooksRpc(page, scopes);
+  } catch (error) {
+    if (!(error instanceof RpcError) || error.code === 16) throw error;
+    log.warning(`  ⚠️  Notebook list RPC failed (${error.message}) — reading the homepage instead`);
+  }
+
   await page
     .locator(Selectors.notebooks.homeFilterButton)
     .first()

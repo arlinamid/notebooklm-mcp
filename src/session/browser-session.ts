@@ -22,6 +22,7 @@ import {
   waitForStableAnswer,
   snapshotPriorAnswers,
   detectFailureReply,
+  countAnswers,
 } from "../notebooklm/chat.js";
 import { dismissPromoDialogs } from "../notebooklm/dialogs.js";
 import {
@@ -89,6 +90,8 @@ import {
   type StudioDownloadTarget,
 } from "../notebooklm/studio-download.js";
 import { notebookUuidFromUrl } from "../notebooklm/account-notebooks.js";
+import { RpcError } from "../notebooklm/rpc.js";
+import { configureChatRpc, readUsageRpc } from "../notebooklm/rpc-ops.js";
 import { abortable, reportProgress } from "../utils/request-context.js";
 
 export interface StudioDownloadResult {
@@ -542,7 +545,10 @@ export class BrowserSession {
       if (existingResponses.length === 0) {
         existingResponses = await snapshotAllResponses(page);
       }
-      log.success(`  ✅ Captured ${existingResponses.length} existing responses`);
+      const priorCount = await countAnswers(page);
+      log.success(
+        `  ✅ Captured ${existingResponses.length} existing responses (${priorCount} bubbles)`
+      );
 
       // Find the chat input
       await dismissPromoDialogs(page);
@@ -582,6 +588,7 @@ export class BrowserSession {
         timeoutMs: CONFIG.answerTimeoutMs,
         pollIntervalMs: 750,
         ignoreTexts: existingResponses,
+        priorCount,
       });
 
       if (!answer) {
@@ -771,6 +778,10 @@ export class BrowserSession {
    */
   async configureChat(input: ChatConfigInput): Promise<ChatConfigResult> {
     return this.onPage("configure_chat", async (page) => {
+      const viaRpc = await this.tryRpc("configure_chat", () =>
+        configureChatRpc(page, this.notebookId(), input)
+      );
+      if (viaRpc) return viaRpc;
       await dismissPromoDialogs(page);
       return await configureChatOnPage(page, input);
     });
@@ -781,9 +792,34 @@ export class BrowserSession {
    */
   async getUsage(): Promise<UsageInfo> {
     return this.onPage("get_usage", async (page) => {
+      const viaRpc = await this.tryRpc("get_usage", () =>
+        readUsageRpc(page, `/notebook/${this.notebookId()}`)
+      );
+      if (viaRpc) return viaRpc;
       await dismissPromoDialogs(page);
       return await readUsage(page);
     });
+  }
+
+  private notebookId(): string {
+    const id = notebookUuidFromUrl(this.notebookUrl);
+    if (!id) throw new Error(`Not a notebook URL: ${this.notebookUrl}`);
+    return id;
+  }
+
+  /**
+   * Run an RPC-based implementation; on RpcError (protocol changed) log it and
+   * return null so the caller falls back to the UI path. Other errors (bad
+   * input, auth) are real and propagate.
+   */
+  private async tryRpc<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!(error instanceof RpcError) || error.code === 16) throw error;
+      log.warning(`  ⚠️  ${label}: RPC path failed (${error.message}) — using the UI instead`);
+      return null;
+    }
   }
 
   /**
@@ -801,8 +837,7 @@ export class BrowserSession {
     want: { artifactId?: string; type?: string; format?: StudioDownloadFormat },
     destinationDir: string
   ): Promise<StudioDownloadResult> {
-    const notebookId = notebookUuidFromUrl(this.notebookUrl);
-    if (!notebookId) throw new Error(`Not a notebook URL: ${this.notebookUrl}`);
+    const notebookId = this.notebookId();
     const plan = await this.onPage("download_studio_artifact", (page) =>
       resolveStudioDownload(page, notebookId, want)
     );

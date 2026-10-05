@@ -206,6 +206,14 @@ export interface AskOptions {
   pollIntervalMs?: number;
   /** Texts known *before* the question was submitted. Used to skip prior answers. */
   ignoreTexts?: string[];
+  /**
+   * Number of answer bubbles before the question was submitted (see
+   * `countAnswers`). Once there are more, the last bubble is the new answer
+   * even when its text equals an earlier one — asking the same question twice
+   * often yields the identical answer, which `ignoreTexts` alone would skip
+   * until the timeout.
+   */
+  priorCount?: number;
   /** How many consecutive identical polls count as "answer settled". Default 3. */
   stablePolls?: number;
 }
@@ -219,6 +227,14 @@ export async function snapshotPriorAnswers(page: Page): Promise<string[]> {
   await waitForChatHistory(page);
   const texts = await readAnswerTexts(page).catch(() => []);
   return texts.map(sanitizeAnswer).filter(Boolean);
+}
+
+/** Number of answer bubbles on the page (pass to `waitForStableAnswer` as `priorCount`). */
+export async function countAnswers(page: Page): Promise<number> {
+  return page
+    .locator(Selectors.chat.answerText)
+    .count()
+    .catch(() => 0);
 }
 
 /**
@@ -314,6 +330,7 @@ export async function waitForStableAnswer(
     pollIntervalMs = 750,
     ignoreTexts = [],
     stablePolls = 3,
+    priorCount,
   } = options;
 
   const deadline = Date.now() + timeoutMs;
@@ -337,8 +354,9 @@ export async function waitForStableAnswer(
     }
 
     let candidate: string | null = null;
+    let count = 0;
     try {
-      candidate = await readLatestAnswer(page);
+      ({ text: candidate, count } = await readLatestAnswer(page));
     } catch (err) {
       if (isRecoverable(err)) throw err;
       // Non-fatal extraction blip — try again next tick.
@@ -346,7 +364,8 @@ export async function waitForStableAnswer(
 
     if (candidate) {
       const isEcho = candidate.toLowerCase() === echoLower;
-      const isPrior = ignoreSet.has(candidate);
+      const isNewBubble = priorCount !== undefined && count > priorCount;
+      const isPrior = !isNewBubble && ignoreSet.has(candidate);
 
       if (!isEcho && !isPrior) {
         // Loading placeholders ("Parsing the data…", "Thinking…", …) are
@@ -387,15 +406,15 @@ export async function waitForStableAnswer(
  * Read the latest answer container's text and strip UI-control leakage.
  * Uses the last answer bubble so we always target the most recent turn.
  */
-async function readLatestAnswer(page: Page): Promise<string | null> {
+async function readLatestAnswer(page: Page): Promise<{ text: string | null; count: number }> {
   try {
     const texts = await readAnswerTexts(page);
     const raw = texts[texts.length - 1];
-    if (!raw) return null;
+    if (!raw) return { text: null, count: texts.length };
     const cleaned = sanitizeAnswer(raw);
-    return cleaned.length > 0 ? cleaned : null;
+    return { text: cleaned.length > 0 ? cleaned : null, count: texts.length };
   } catch {
-    return null;
+    return { text: null, count: 0 };
   }
 }
 
