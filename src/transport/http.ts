@@ -15,21 +15,28 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, type Server as HttpServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { log } from "../utils/logger.js";
 
 export interface HttpTransportOptions {
+  /** 0 picks a free port; the handle reports the one in use. */
   port: number;
   host?: string;
+  /**
+   * When set, every /mcp request must carry `Authorization: Bearer <token>`
+   * (used for the internal endpoint other server instances forward to).
+   */
+  authToken?: string;
   /** Connect callback invoked once per new session — wires the McpServer to the transport. */
   connect: (transport: StreamableHTTPServerTransport) => Promise<void>;
 }
 
 export interface HttpTransportHandle {
   server: HttpServer;
+  port: number;
   close: () => Promise<void>;
 }
 
@@ -52,15 +59,16 @@ export async function startHttpTransport(opts: HttpTransportOptions): Promise<Ht
     server.once("error", reject);
     server.listen(opts.port, opts.host ?? "127.0.0.1", () => {
       server.off("error", reject);
-      log.success(
-        `🌐 HTTP transport listening on http://${opts.host ?? "127.0.0.1"}:${opts.port}/mcp`
-      );
       resolve();
     });
   });
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : opts.port;
+  log.success(`🌐 HTTP transport listening on http://${opts.host ?? "127.0.0.1"}:${port}/mcp`);
 
   return {
     server,
+    port,
     close: async () => {
       for (const t of transports.values()) {
         try {
@@ -105,6 +113,12 @@ async function handleRequest(
   if (url.pathname !== "/mcp") {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "not found", expected: "/mcp" }));
+    return;
+  }
+
+  if (opts.authToken && !hasBearer(req, opts.authToken)) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "unauthorized" }));
     return;
   }
 
@@ -171,6 +185,12 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   } catch {
     throw new Error("Invalid JSON request body");
   }
+}
+
+function hasBearer(req: IncomingMessage, token: string): boolean {
+  const given = Buffer.from(headerString(req.headers.authorization) ?? "");
+  const want = Buffer.from(`Bearer ${token}`);
+  return given.length === want.length && timingSafeEqual(given, want);
 }
 
 function headerString(value: string | string[] | undefined): string | undefined {

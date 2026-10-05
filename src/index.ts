@@ -72,7 +72,9 @@ import {
 } from "./notebooklm/studio.js";
 import { PACKAGE } from "./version.js";
 import type { ProgressCallback } from "./types.js";
-import { CancelledError, runWithRequestContext } from "./utils/request-context.js";
+import { CancelledError, requestContext, runWithRequestContext } from "./utils/request-context.js";
+import { InstanceCoordinator } from "./coordination/coordinator.js";
+import path from "path";
 import { TASK_TOOLS, TaskRunner } from "./tasks/task-runner.js";
 import { SERVER_ICONS, toolIcons } from "./icons.js";
 import { FileRoots } from "./utils/file-roots.js";
@@ -251,6 +253,8 @@ class NotebookLMMCPServer {
   private settingsManager: SettingsManager;
   private toolDefinitions: Tool[];
   private taskRunner: TaskRunner;
+  /** Leader/follower role among server instances sharing this data dir. */
+  private coordinator: InstanceCoordinator;
 
   /**
    * The connection serving the current request. Tool calls (and the tasks
@@ -374,12 +378,14 @@ class NotebookLMMCPServer {
       this.library,
       (p, a, v) => this.promptHandlers.complete(p, a, v),
       async (uuid, view, pollKey) => {
-        // Subscription polls reuse one dedicated session per notebook.
-        const session = await this.sessionManager.getOrCreateSession(
-          pollKey,
-          `${NOTEBOOKLM_BASE_URL}notebook/${uuid}`
-        );
-        const items = view === "sources" ? await session.listSources() : await session.listStudio();
+        // Subscription polls reuse one dedicated session per notebook; they go
+        // through the tool path so a follower instance asks the leader.
+        const tool = view === "sources" ? "list_sources" : "list_studio_artifacts";
+        const data = await this.callToolData(tool, {
+          session_id: pollKey,
+          notebook_url: `${NOTEBOOKLM_BASE_URL}notebook/${uuid}`,
+        });
+        const items = (view === "sources" ? data?.sources : data?.artifacts) ?? [];
         return { notebook: uuid, view, items, read_at: new Date().toISOString() };
       }
     );
@@ -394,16 +400,34 @@ class NotebookLMMCPServer {
     this.taskRunner = new TaskRunner(
       (name, args, progress) => this.callTool(name, args, async (m) => progress(m)),
       async (args) => {
-        const r = await this.toolHandlers.handleListStudioArtifacts({
-          notebook_id: args?.notebook_id as string | undefined,
-          notebook_url: args?.notebook_url as string | undefined,
-          session_id: args?.session_id as string | undefined,
-        });
-        return r.success && r.data ? r.data.artifacts : null;
+        const data = await this.callToolData("list_studio_artifacts", {
+          notebook_id: args?.notebook_id,
+          notebook_url: args?.notebook_url,
+          session_id: args?.session_id,
+        }).catch(() => null);
+        return (
+          (data?.artifacts as Array<{ id: string; type: string; title: string; status: string }>) ??
+          null
+        );
       },
       { choose: this.askUserChoice, sample: this.askClientModel }
     );
     this.toolDefinitions = this.settingsManager.filterTools(allTools);
+    this.coordinator = new InstanceCoordinator(
+      path.join(CONFIG.dataDir, "leader.json"),
+      PACKAGE.version,
+      async (token) => {
+        const endpoint = await startHttpTransport({
+          port: 0,
+          host: "127.0.0.1",
+          authToken: token,
+          connect: async (transport) => {
+            await this.createConnection().server.connect(transport);
+          },
+        });
+        return { port: endpoint.port, close: endpoint.close };
+      }
+    );
 
     this.setupClientLogging();
     this.setupShutdownHandlers();
@@ -465,6 +489,7 @@ class NotebookLMMCPServer {
     server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
       log.info("📁 [MCP] Client roots changed");
       conn.fileRoots.invalidate();
+      void this.coordinator.rootsChanged(server);
     });
 
     // List available tools
@@ -676,6 +701,25 @@ class NotebookLMMCPServer {
     }
   }
 
+  /**
+   * Run a tool internally (forwarded like a client call when another
+   * instance owns the browser) and return its `data`; throws on failure.
+   */
+  private async callToolData(
+    name: string,
+    args: Record<string, unknown>
+  ): Promise<Record<string, unknown> | undefined> {
+    const res = await this.callTool(name, args, async () => undefined);
+    const text = res.content.find((c) => c.type === "text")?.text;
+    const body = (text ? JSON.parse(text) : res.structuredContent) as {
+      success?: boolean;
+      data?: Record<string, unknown>;
+      error?: string;
+    };
+    if (res.isError || !body?.success) throw new Error(body?.error ?? `${name} failed`);
+    return body.data;
+  }
+
   /** Dispatch one tool call and wrap its result as a CallToolResult. */
   private async callTool(
     name: string,
@@ -685,6 +729,22 @@ class NotebookLMMCPServer {
     {
       try {
         await this.checkFileAccess(name, args);
+
+        // Another instance owns the browser: run the call there.
+        if (this.coordinator.forwards(name)) {
+          const upstream = (this.conn() ?? [...this.connections][0])?.server;
+          if (upstream) {
+            const forwarded = await this.coordinator.forward(
+              upstream,
+              name,
+              args,
+              sendProgress,
+              requestContext()?.signal
+            );
+            if (forwarded) return forwarded;
+          }
+        }
+
         let result;
 
         switch (name) {
@@ -1024,6 +1084,7 @@ class NotebookLMMCPServer {
       try {
         this.resourceHandlers.stopSubscriptions();
         this.taskRunner.shutdown();
+        await this.coordinator.release();
         await this.toolHandlers.cleanup();
         await Promise.all(
           [...this.connections].map((c) => c.server.close().catch(() => undefined))
@@ -1073,6 +1134,11 @@ class NotebookLMMCPServer {
     log.info(`  Stealth: ${CONFIG.stealthEnabled}`);
     log.info(`  Transport: ${options.kind}`);
     log.info("");
+
+    // Decide which instance owns the browser before serving requests.
+    await this.coordinator.init().catch((error) => {
+      log.warning(`⚠️  Instance coordination unavailable, running standalone: ${error}`);
+    });
 
     if (options.kind === "http") {
       await startHttpTransport({

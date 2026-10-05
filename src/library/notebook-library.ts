@@ -21,6 +21,8 @@ import type {
 export class NotebookLibrary {
   private libraryPath: string;
   private library: Library;
+  /** mtime of library.json when this instance last read or wrote it. */
+  private knownMtimeMs = 0;
 
   constructor() {
     this.libraryPath = path.join(CONFIG.dataDir, "library.json");
@@ -42,6 +44,7 @@ export class NotebookLibrary {
       if (fs.existsSync(this.libraryPath)) {
         const data = fs.readFileSync(this.libraryPath, "utf-8");
         const library = JSON.parse(data) as Library;
+        this.knownMtimeMs = this.fileMtimeMs();
         log.success(`  ✅ Loaded library with ${library.notebooks.length} notebooks`);
         return library;
       }
@@ -105,10 +108,34 @@ export class NotebookLibrary {
       const data = JSON.stringify(library, null, 2);
       fs.writeFileSync(this.libraryPath, data, "utf-8");
       this.library = library;
+      this.knownMtimeMs = this.fileMtimeMs();
       log.success(`  💾 Library saved (${library.notebooks.length} notebooks)`);
     } catch (error) {
       log.error(`  ❌ Failed to save library: ${error}`);
       throw error;
+    }
+  }
+
+  private fileMtimeMs(): number {
+    try {
+      return fs.statSync(this.libraryPath).mtimeMs;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Re-read library.json when another server instance changed it (the leader
+   * instance writes it; followers only read).
+   */
+  private refreshIfChanged(): void {
+    const mtime = this.fileMtimeMs();
+    if (!mtime || mtime === this.knownMtimeMs) return;
+    try {
+      this.library = JSON.parse(fs.readFileSync(this.libraryPath, "utf-8")) as Library;
+      this.knownMtimeMs = mtime;
+    } catch (error) {
+      log.warning(`  ⚠️  Could not reload library: ${error}`);
     }
   }
 
@@ -155,6 +182,7 @@ export class NotebookLibrary {
    * active when the library was empty.
    */
   addNotebooks(inputs: AddNotebookInput[]): NotebookEntry[] {
+    this.refreshIfChanged();
     const updated = { ...this.library };
     const wasEmpty = updated.notebooks.length === 0;
     const added: NotebookEntry[] = [];
@@ -194,6 +222,7 @@ export class NotebookLibrary {
    * notebook is recognised under the legacy host or with `?authuser=N`.
    */
   findByNotebookUuid(uuid: string): NotebookEntry | null {
+    this.refreshIfChanged();
     const needle = uuid.toLowerCase();
     return this.library.notebooks.find((n) => n.url.toLowerCase().includes(needle)) || null;
   }
@@ -202,6 +231,7 @@ export class NotebookLibrary {
    * List all notebooks in library
    */
   listNotebooks(): NotebookEntry[] {
+    this.refreshIfChanged();
     return this.library.notebooks;
   }
 
@@ -209,6 +239,7 @@ export class NotebookLibrary {
    * Get a specific notebook by ID
    */
   getNotebook(id: string): NotebookEntry | null {
+    this.refreshIfChanged();
     return this.library.notebooks.find((n) => n.id === id) || null;
   }
 
@@ -216,6 +247,7 @@ export class NotebookLibrary {
    * Get the currently active notebook
    */
   getActiveNotebook(): NotebookEntry | null {
+    this.refreshIfChanged();
     if (!this.library.active_notebook_id) {
       return null;
     }
@@ -309,6 +341,7 @@ export class NotebookLibrary {
    * Increment use count for a notebook
    */
   incrementUseCount(id: string): NotebookEntry | null {
+    this.refreshIfChanged();
     const notebookIndex = this.library.notebooks.findIndex((n) => n.id === id);
     if (notebookIndex === -1) {
       return null;
@@ -332,6 +365,7 @@ export class NotebookLibrary {
    * Get library statistics
    */
   getStats(): LibraryStats {
+    this.refreshIfChanged();
     const totalQueries = this.library.notebooks.reduce((sum, n) => sum + n.use_count, 0);
 
     const mostUsed = this.library.notebooks.reduce(
@@ -352,6 +386,7 @@ export class NotebookLibrary {
    * Search notebooks by query (searches name, description, topics)
    */
   searchNotebooks(query: string): NotebookEntry[] {
+    this.refreshIfChanged();
     const lowerQuery = query.toLowerCase();
     return this.library.notebooks.filter(
       (n) =>
