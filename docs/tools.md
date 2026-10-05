@@ -148,7 +148,7 @@ Generate a podcast-style Audio Overview for a notebook. Resolves when the audio 
 }
 ```
 
-Pair with `download_audio` to persist the file. Video / Infographic / Slides are not in v2.0.0.
+Pair with `download_audio` (or `download_studio_artifact`) to persist the file.
 
 ---
 
@@ -187,6 +187,48 @@ Download the most recent Audio Overview to disk.
 ```
 
 Run `generate_audio` first if no Audio Overview exists yet.
+
+---
+
+## download_studio_artifact
+
+Save any finished Studio output to disk. It reads NotebookLM's own data API (`batchexecute` RPCs called from inside the signed-in tab) instead of clicking menus, so it takes a second or two per item and does not depend on the UI layout.
+
+| Type | File |
+|---|---|
+| `audio` | `.m4a` |
+| `video` | `.mp4` |
+| `infographic` | `.png` |
+| `slide_deck` | `.pdf` (default) or `.pptx` |
+| `report` | `.md` (interactive reports: not yet — use Export to Docs) |
+| `data_table` | `.csv` (UTF-8 with BOM, opens in Excel); `.xlsx` for spreadsheet exports |
+| `quiz`, `flashcards` | `.md` (default), `.json` or `.html` |
+| `mind_map` | `.json` (`{ name, children }` tree) |
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `destination_dir` | string | yes | Absolute directory, created if missing. Must lie inside the client's roots / `NOTEBOOKLM_FILE_ROOTS` when those are set. |
+| `artifact_id` | string | one of | `id` from `list_studio_artifacts`; a unique prefix is enough. |
+| `type` | string | one of | Without `artifact_id`: the newest finished item of this type. |
+| `format` | string | no | `slide_deck`: `pdf` \| `pptx`. `quiz` / `flashcards`: `markdown` \| `json` \| `html`. |
+| `session_id`, `notebook_id`, `notebook_url` | string | no | Notebook targeting, as for the other Studio tools. |
+
+The file is named after the item's title; an existing file is kept and the new one gets a ` (2)` suffix.
+
+### Return shape
+
+```jsonc
+{
+  "result": {
+    "artifact": { "id": "9d728bd3-…", "title": "Chain Bridge", "type": "slide_deck" },
+    "file_path": "/Users/me/Downloads/notebooklm/Chain Bridge.pdf",
+    "bytes": 14224683,
+    "format": "pdf"
+  }
+}
+```
 
 ---
 

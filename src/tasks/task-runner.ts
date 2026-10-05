@@ -37,6 +37,7 @@ export const TASK_TOOLS = new Set([
   "generate_audio",
   "generate_studio_artifact",
   "download_audio",
+  "download_studio_artifact",
   "save_answer_as_note",
   "convert_note_to_source",
 ]);

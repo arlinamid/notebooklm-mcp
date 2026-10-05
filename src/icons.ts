@@ -53,6 +53,7 @@ const TOOL_GROUPS: Record<IconName, string[]> = {
     "generate_audio",
     "get_audio_status",
     "download_audio",
+    "download_studio_artifact",
   ],
   sources: ["add_source", "list_sources", "delete_source", "convert_note_to_source"],
   prompts: ["list_prompt_templates", "get_prompt_template"],

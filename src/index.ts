@@ -658,7 +658,8 @@ class NotebookLMMCPServer {
   ): Promise<void> {
     const needsRoots =
       (name === "add_source" && args?.type === "file" && Array.isArray(args.file_paths)) ||
-      (name === "download_audio" && typeof args?.destination_dir === "string");
+      ((name === "download_audio" || name === "download_studio_artifact") &&
+        typeof args?.destination_dir === "string");
     if (!needsRoots) return;
     const fileRoots = this.conn()?.fileRoots;
     if (!fileRoots) throw new Error("No client connection to check file roots against.");
@@ -667,8 +668,11 @@ class NotebookLMMCPServer {
         await fileRoots.assertAllowed(String(p), "Uploading a local file to NotebookLM");
       }
     }
-    if (name === "download_audio" && typeof args?.destination_dir === "string") {
-      await fileRoots.assertAllowed(args.destination_dir, "Saving the audio file");
+    if (
+      (name === "download_audio" || name === "download_studio_artifact") &&
+      typeof args?.destination_dir === "string"
+    ) {
+      await fileRoots.assertAllowed(args.destination_dir, "Saving the downloaded file");
     }
   }
 
@@ -889,6 +893,12 @@ class NotebookLMMCPServer {
             );
             break;
           }
+
+          case "download_studio_artifact":
+            result = await this.toolHandlers.handleDownloadStudioArtifact(
+              args as unknown as Parameters<ToolHandlers["handleDownloadStudioArtifact"]>[0]
+            );
+            break;
 
           case "list_studio_artifacts":
             result = await this.toolHandlers.handleListStudioArtifacts(

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `download_studio_artifact` — saves any finished Studio output: audio
+  (`.m4a`), video (`.mp4`), infographic (`.png`), slide deck (`.pdf` or
+  `.pptx`), report (`.md`), data table (`.csv`, `.xlsx` exports), quiz and
+  flashcards (`.md`, `.json` or `.html`) and mind maps (`.json`). It reads
+  NotebookLM's own data API (`batchexecute` RPCs, called from inside the
+  signed-in tab) instead of clicking menus, so it is fast (1–4 s per item)
+  and independent of the UI layout. Pick an item by `artifact_id` (or a
+  unique prefix) or the newest finished one of a `type`. The RPC layer
+  follows the protocol mapping of gemini-notebook-mcp-cli (MIT); see
+  THIRD_PARTY_NOTICES.md.
+
 ### Fixed
 
 - Concurrent tool calls on the same session no longer drive its browser tab

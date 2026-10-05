@@ -230,6 +230,7 @@ All 31 tools below are visible under the `full` profile. See [Profiles](#tool-pr
 | `generate_audio` | Generate an Audio Overview. Optional `custom_prompt`, `format` (`deep_dive`/`brief`/`critique`/`debate`), `length`, `sources`, `generate_later`, `wait_for_completion`, `timeout_ms` (default 600 000 ms). |
 | `get_audio_status` | Non-blocking audio state: `ready` / `in_progress` / `not_started`. |
 | `download_audio` | Save the most recent Audio Overview (`.m4a`, original title as file name) to `destination_dir`. |
+| `download_studio_artifact` | Save any finished Studio output: audio `.m4a`, video `.mp4`, infographic `.png`, slide deck `.pdf`/`.pptx`, report `.md`, data table `.csv`, quiz/flashcards `.md`/`.json`, mind map `.json`. Pick by `artifact_id` or newest of a `type`. Uses NotebookLM's data API, not the menus. |
 | `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template`, and `sources` (work from a subset of sources). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. |
 | `list_studio_artifacts` | Studio library incl. notes: id, type, title, details, status (`ready` / `generating` / `scheduled`). |
 | `list_sources` | Sources with stable id, title, kind and chat selection. |
@@ -319,12 +320,12 @@ Beyond tools, prompts and resources, the server uses these optional MCP features
 
 | Feature | What it does here |
 |---|---|
-| **Tasks** (experimental) | The long-running tools (`ask_question`, `add_source`, `generate_audio`, `generate_studio_artifact`, `download_audio`, `save_answer_as_note`, `convert_note_to_source`) declare `taskSupport: "optional"`. As a task they return at once and report status. They support `tasks/get`, `tasks/result`, `tasks/cancel` and `tasks/list`. Studio tasks finish when the output is ready. |
+| **Tasks** (experimental) | The long-running tools (`ask_question`, `add_source`, `generate_audio`, `generate_studio_artifact`, `download_audio`, `download_studio_artifact`, `save_answer_as_note`, `convert_note_to_source`) declare `taskSupport: "optional"`. As a task they return at once and report status. They support `tasks/get`, `tasks/result`, `tasks/cancel` and `tasks/list`. Studio tasks finish when the output is ready. |
 | **Cancellation** | Cancelling a call stops the browser work at the next wait step; the session stays usable. |
 | **Progress** | `notifications/progress` for calls that pass a `progressToken`. |
 | **Elicitation** | Approval before deletions, `re_auth` and `cleanup_data`. A chooser when a source or Studio name is ambiguous. The Studio options form (`ask_options`). |
 | **Sampling** | `add_notebook` metadata proposal. |
-| **Roots** | Local file paths (`add_source` files, `download_audio` destination) must lie inside the client's roots or `NOTEBOOKLM_FILE_ROOTS`. |
+| **Roots** | Local file paths (`add_source` files, `download_audio` / `download_studio_artifact` destination) must lie inside the client's roots or `NOTEBOOKLM_FILE_ROOTS`. |
 | **Logging** | Server logs as `notifications/message`. The default level is `warning`; change it with `logging/setLevel`. |
 | **Structured output** | `outputSchema` + `structuredContent` for `list_sources`, `list_studio_artifacts`, `get_usage`, `list_prompt_templates`; `isError` on failures. |
 | **Resource subscriptions** | Subscribed notebook views are polled and `notifications/resources/updated` is sent on change. Library edits send `list_changed`. |
@@ -519,3 +520,5 @@ v2 changes the following defaults — adjust if you depended on v1 behaviour:
 MIT. See [LICENSE](./LICENSE).
 
 The bundled prompt templates come from [Prompt Architect for NotebookLM](https://github.com/arlinamid/notebooklm-browser-plugin) (MIT, János Rózsavölgyi) and [NotebookLM Learner Pack](https://github.com/DrMultivac/notebooklm-learner-pack) (MIT, Christian Pean); license texts and source commits are in [prompts/THIRD_PARTY_NOTICES.md](prompts/THIRD_PARTY_NOTICES.md).
+
+The NotebookLM RPC layer (`download_studio_artifact`) follows the protocol mapping of [gemini-notebook-mcp-cli](https://github.com/jacob-bd/gemini-notebook-mcp-cli) (MIT, Jacob Ben David); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
