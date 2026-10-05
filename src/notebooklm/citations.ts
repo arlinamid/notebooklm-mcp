@@ -23,6 +23,7 @@
 import type { Page } from "patchright";
 import { safeSleep } from "../browser/watchdog.js";
 import { Selectors } from "./selectors.js";
+import { closeSourceView } from "./source-select.js";
 
 export type SourceFormat = "none" | "inline" | "footnotes" | "json";
 
@@ -68,8 +69,10 @@ export async function extractCitations(
   }
 
   // Best-effort: dismiss any source panel still open and refocus the chat
-  // input so the next question can be typed without an extra click.
+  // input so the next question can be typed without an extra click. The
+  // markers also open the source in the sidebar, which Escape leaves open.
   await page.keyboard.press("Escape").catch(() => undefined);
+  await closeSourceView(page).catch(() => undefined);
   await safeSleep(page, 100);
 
   return {

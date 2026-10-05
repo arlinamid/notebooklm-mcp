@@ -136,6 +136,15 @@ export const Selectors = {
     /** Row "More" button id prefix; the rest of the id is the source UUID. */
     rowIdPrefix: "source-item-more-button-",
     /**
+     * Single-source view that replaces the source list in the sidebar —
+     * opened by a citation marker or a source title (2026-10). Escape does
+     * not close it; the panel-header button with the `collapse_content`
+     * glyph ("Close source view") does.
+     */
+    sourceViewer: "section.source-panel source-viewer",
+    closeSourceView:
+      'section.source-panel .panel-header button:has(mat-icon:text-is("collapse_content"))',
+    /**
      * "X Quellen" / "X sources" header text. Numeric so we read the count
      * via regex on the visible text. Independent of sidebar collapse state.
      */

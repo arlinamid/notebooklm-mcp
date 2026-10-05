@@ -400,6 +400,20 @@ async function readLatestAnswer(page: Page): Promise<string | null> {
 }
 
 /**
+ * Canned replies NotebookLM renders in the answer bubble when it fails to
+ * answer (seen 2026-10 while the Google session was expiring). They are not
+ * kept in the chat history, so only the text identifies them.
+ */
+const FAILURE_REPLIES = [/^I[’']m having trouble responding right now\.?$/i];
+
+/** The failure reply if the whole answer is one, else null. */
+export function detectFailureReply(answer: string): string | null {
+  const text = answer.trim();
+  if (text.length > 200) return null;
+  return FAILURE_REPLIES.some((re) => re.test(text)) ? text : null;
+}
+
+/**
  * Strip Material-icon labels (`more_vert`, `more_horiz`, …) and orphaned
  * citation markers that NotebookLM occasionally leaks into `innerText`.
  * Only isolated lines are removed — never inline content — so legitimate

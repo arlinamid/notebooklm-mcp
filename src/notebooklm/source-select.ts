@@ -64,8 +64,22 @@ export async function resolveSourceIds(
   return ids;
 }
 
+/**
+ * Return the sidebar to the source list if a single source is open in it
+ * (a clicked citation marker opens one, and Escape does not close it).
+ */
+export async function closeSourceView(page: Page): Promise<void> {
+  if ((await page.locator(Selectors.sources.sourceViewer).count()) === 0) return;
+  await page.locator(Selectors.sources.closeSourceView).first().click({ timeout: 5_000 });
+  await page
+    .locator(Selectors.sources.sourceViewer)
+    .waitFor({ state: "detached", timeout: 5_000 })
+    .catch(() => undefined);
+}
+
 /** Every source in the sidebar, in display order. */
 export async function listSources(page: Page): Promise<NotebookSource[]> {
+  await closeSourceView(page);
   return page.evaluate(
     ({ rowSel, idPrefix }) =>
       Array.from(document.querySelectorAll(rowSel)).map((row) => {
