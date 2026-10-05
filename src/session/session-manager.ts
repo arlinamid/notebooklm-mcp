@@ -25,6 +25,8 @@ export class SessionManager {
   private authManager: AuthManager;
   private sharedContextManager: SharedContextManager;
   private sessions: Map<string, BrowserSession> = new Map();
+  /** Sessions being opened right now, so concurrent calls share one tab. */
+  private creating = new Map<string, Promise<BrowserSession>>();
   private maxSessions: number;
   private sessionTimeout: number;
   private cleanupInterval?: NodeJS.Timeout;
@@ -101,6 +103,13 @@ export class SessionManager {
       }
     }
 
+    // A concurrent call may be opening this session already — share its tab.
+    const pending = this.creating.get(sessionId);
+    if (pending) {
+      const shared = await pending.catch(() => null);
+      if (shared?.notebookUrl === targetUrl) return shared;
+    }
+
     // Return existing session if found
     if (this.sessions.has(sessionId)) {
       const session = this.sessions.get(sessionId)!;
@@ -131,27 +140,32 @@ export class SessionManager {
     if (overrideHeadless !== undefined) {
       log.info(`  Show browser: ${overrideHeadless}`);
     }
-    try {
+    const id = sessionId;
+    const creation = (async () => {
       // Ensure the shared context exists (ONE fingerprint for all sessions!)
       await this.sharedContextManager.getOrCreateContext(overrideHeadless);
 
       // Create and initialize session
       const session = new BrowserSession(
-        sessionId,
+        id,
         this.sharedContextManager,
         this.authManager,
         targetUrl
       );
       await session.init();
 
-      this.sessions.set(sessionId, session);
-      log.success(
-        `✅ Session ${sessionId} created (${this.sessions.size}/${this.maxSessions} active)`
-      );
+      this.sessions.set(id, session);
+      log.success(`✅ Session ${id} created (${this.sessions.size}/${this.maxSessions} active)`);
       return session;
+    })();
+    this.creating.set(id, creation);
+    try {
+      return await creation;
     } catch (error) {
       log.error(`❌ Failed to create session: ${error}`);
       throw error;
+    } finally {
+      this.creating.delete(id);
     }
   }
 
@@ -231,7 +245,7 @@ export class SessionManager {
     const inactiveSessions: string[] = [];
 
     for (const [sessionId, session] of this.sessions.entries()) {
-      if (session.isExpired(this.sessionTimeout)) {
+      if (session.isExpired(this.sessionTimeout) && !session.busy) {
         inactiveSessions.push(sessionId);
       }
     }
@@ -278,7 +292,8 @@ export class SessionManager {
     let oldestTime = Infinity;
 
     for (const [sessionId, session] of this.sessions.entries()) {
-      if (session.createdAt < oldestTime) {
+      // Never evict a tab that a tool call is using or waiting for.
+      if (!session.busy && session.createdAt < oldestTime) {
         oldestTime = session.createdAt;
         oldestId = sessionId;
       }

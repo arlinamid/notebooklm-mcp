@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Concurrent tool calls on the same session no longer drive its browser tab
+  at the same time (two calls clicking in one tab closed each other's
+  dialogs and panels). Each session now has a FIFO queue: page interactions
+  run one at a time, waiting calls get a "Queued behind …" progress message,
+  and `list_sessions` shows `current_operation` / `queued_operations`.
+  Long renders do not hold the tab — `generate_audio` with
+  `wait_for_completion` polls in short queued steps, so chat questions and
+  other Studio work can run meanwhile. An answer and its citations are read
+  in one step.
+- Two calls that open the same new `session_id` at once share one tab
+  instead of opening two; idle-session cleanup never closes a busy tab.
+
 ## [3.1.1] - 2026-10-05
 
 ### Fixed

@@ -79,6 +79,11 @@ import { CONFIG } from "../config.js";
 import { log } from "../utils/logger.js";
 import type { SessionInfo, ProgressCallback } from "../types.js";
 import { RateLimitError } from "../errors.js";
+import { PageLock } from "../utils/page-lock.js";
+import { abortable, reportProgress } from "../utils/request-context.js";
+
+/** How often `generateAudio({ waitForCompletion })` checks the render. */
+const AUDIO_POLL_MS = 15_000;
 
 export class BrowserSession {
   public readonly sessionId: string;
@@ -94,6 +99,8 @@ export class BrowserSession {
   private authManager: AuthManager;
   private page: Page | null = null;
   private initialized: boolean = false;
+  /** Serialises tool calls that drive this tab (see PageLock). */
+  private lock = new PageLock();
 
   constructor(
     sessionId: string,
@@ -110,6 +117,33 @@ export class BrowserSession {
     this.messageCount = 0;
 
     log.info(`🆕 BrowserSession ${sessionId} created`);
+  }
+
+  /** True while an operation runs on this tab or waits for it. */
+  get busy(): boolean {
+    return this.lock.current !== null || this.lock.queued > 0;
+  }
+
+  /** Run `fn` under this tab's lock; counts as activity for idle cleanup. */
+  private exclusive<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    return this.lock.run(label, async () => {
+      this.updateActivity();
+      try {
+        return await fn();
+      } finally {
+        this.updateActivity();
+      }
+    });
+  }
+
+  /** Run `fn` on this tab under its lock, initialising the page first. */
+  private onPage<T>(label: string, fn: (page: Page) => Promise<T>): Promise<T> {
+    return this.exclusive(label, async () => {
+      if (!this.initialized || !this.page || this.isPageClosedSafe()) {
+        await this.init();
+      }
+      return fn(this.page!);
+    });
   }
 
   /**
@@ -417,6 +451,30 @@ export class BrowserSession {
     sendProgress?: ProgressCallback,
     options: { sources?: string[] } = {}
   ): Promise<string> {
+    return this.exclusive("ask_question", () => this.askUnlocked(question, sendProgress, options));
+  }
+
+  /**
+   * Ask, then read the answer's citations, as one locked step — nothing else
+   * may click on the tab between the answer and the citation markers.
+   */
+  async askWithCitations(
+    question: string,
+    format: SourceFormat,
+    sendProgress?: ProgressCallback,
+    options: { sources?: string[] } = {}
+  ): Promise<ExtractCitationsResult> {
+    return this.exclusive("ask_question", async () => {
+      const answer = await this.askUnlocked(question, sendProgress, options);
+      return this.extractCitationsUnlocked(answer, format);
+    });
+  }
+
+  private async askUnlocked(
+    question: string,
+    sendProgress?: ProgressCallback,
+    options: { sources?: string[] } = {}
+  ): Promise<string> {
     this.lastScopedSources = null;
     const askOnce = async (): Promise<string> => {
       // Optional source scoping (sidebar checkboxes); restored afterwards so
@@ -572,51 +630,60 @@ export class BrowserSession {
    * without first running `ask()`.
    */
   async addSource(input: AddSourceInput): Promise<AddSourceResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    return await addSourceToPage(this.page!, input);
+    return this.onPage("add_source", (page) => addSourceToPage(page, input));
   }
 
   /**
    * Generate an Audio Overview for the active notebook (issue #11).
    */
   async generateAudio(options: GenerateAudioOptions = {}): Promise<AudioGenerationResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
+    const { waitForCompletion = false, timeoutMs = 600_000, ...start } = options;
+    const result = await this.onPage("generate_audio", (page) =>
+      generateAudioOnPage(page, { ...start, waitForCompletion: false })
+    );
+    const rendering = result.status === "started" || result.status === "in_progress";
+    if (!waitForCompletion || !rendering || start.generateLater) return result;
+
+    // The render runs on Google's side; poll in short locked steps so chat
+    // questions and other Studio work can use this tab meanwhile.
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      await abortable(new Promise((resolve) => setTimeout(resolve, AUDIO_POLL_MS)));
+      const status = await this.getAudioStatus();
+      if (status.status === "ready" || status.status === "error") return status;
+      const min = Math.round((Date.now() - started) / 60_000);
+      void reportProgress(`Waiting for the Audio Overview (${min} min elapsed)…`);
     }
-    return await generateAudioOnPage(this.page!, options);
+    return {
+      status: "in_progress",
+      message:
+        `Still generating after ${Math.round(timeoutMs / 60_000)} min — ` +
+        "poll `get_audio_status`, then call `download_audio`.",
+    };
   }
 
   /**
    * Non-blocking probe for the current Audio Overview state (issue #11).
    */
   async getAudioStatus(): Promise<AudioGenerationResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    return await getAudioStatusOnPage(this.page!);
+    return this.onPage("get_audio_status", (page) => getAudioStatusOnPage(page));
   }
 
   /**
    * Generate any Studio output type via its customise dialog (2026-09 UI).
    */
   async generateStudio(options: GenerateStudioOptions): Promise<GenerateStudioResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return await generateStudioArtifact(this.page!, options);
+    return this.onPage("generate_studio_artifact", async (page) => {
+      await dismissPromoDialogs(page);
+      return await generateStudioArtifact(page, options);
+    });
   }
 
   /**
    * List the Studio library (finished + generating items).
    */
   async listStudio(): Promise<StudioArtifact[]> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    return await listStudioArtifacts(this.page!);
+    return this.onPage("list_studio_artifacts", (page) => listStudioArtifacts(page));
   }
 
   /**
@@ -627,99 +694,86 @@ export class BrowserSession {
     kind: "source" | "note" | "studio_item" | undefined,
     isSource: boolean
   ): Promise<DeleteTarget> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return isSource
-      ? await resolveSourceTarget(this.page!, ref)
-      : await resolveStudioTarget(this.page!, ref, kind === "source" ? undefined : kind);
+    return this.onPage("delete (resolve)", async (page) => {
+      await dismissPromoDialogs(page);
+      return isSource
+        ? await resolveSourceTarget(page, ref)
+        : await resolveStudioTarget(page, ref, kind === "source" ? undefined : kind);
+    });
   }
 
   /**
    * Permanently delete a source (caller must have user confirmation).
    */
   async deleteSource(ref: string): Promise<DeleteResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return await deleteSourceOnPage(this.page!, ref);
+    return this.onPage("delete_source", async (page) => {
+      await dismissPromoDialogs(page);
+      return await deleteSourceOnPage(page, ref);
+    });
   }
 
   /**
    * Permanently delete a Studio output or note (caller must have user confirmation).
    */
   async deleteStudioEntry(title: string, kind?: "note" | "studio_item"): Promise<DeleteResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return await deleteStudioEntryOnPage(this.page!, title, kind);
+    return this.onPage("delete_studio_artifact", async (page) => {
+      await dismissPromoDialogs(page);
+      return await deleteStudioEntryOnPage(page, title, kind);
+    });
   }
 
   /**
    * List the notebook's sources (id, title, kind, chat selection).
    */
   async listSources(): Promise<NotebookSource[]> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    return await listSources(this.page!);
+    return this.onPage("list_sources", (page) => listSources(page));
   }
 
   /**
    * Pin a chat answer as a note (latest answer, or the answer to `question`).
    */
   async saveAnswerAsNote(question?: string): Promise<SavedNote> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return await saveAnswerAsNoteOnPage(this.page!, question);
+    return this.onPage("save_answer_as_note", async (page) => {
+      await dismissPromoDialogs(page);
+      return await saveAnswerAsNoteOnPage(page, question);
+    });
   }
 
   /**
    * Turn a note (or all notes) into source(s).
    */
   async convertNoteToSource(opts: { title?: string; all?: boolean }): Promise<ConvertResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return await convertNoteToSourceOnPage(this.page!, opts);
+    return this.onPage("convert_note_to_source", async (page) => {
+      await dismissPromoDialogs(page);
+      return await convertNoteToSourceOnPage(page, opts);
+    });
   }
 
   /**
    * Read or change the notebook's chat configuration.
    */
   async configureChat(input: ChatConfigInput): Promise<ChatConfigResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return await configureChatOnPage(this.page!, input);
+    return this.onPage("configure_chat", async (page) => {
+      await dismissPromoDialogs(page);
+      return await configureChatOnPage(page, input);
+    });
   }
 
   /**
    * Read the AI usage & limits dialog.
    */
   async getUsage(): Promise<UsageInfo> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    await dismissPromoDialogs(this.page!);
-    return await readUsage(this.page!);
+    return this.onPage("get_usage", async (page) => {
+      await dismissPromoDialogs(page);
+      return await readUsage(page);
+    });
   }
 
   /**
    * Download the most recent Audio Overview (issue #11).
    */
   async downloadAudio(destinationDir: string): Promise<DownloadAudioResult> {
-    if (!this.initialized || !this.page || this.isPageClosedSafe()) {
-      await this.init();
-    }
-    return await downloadAudioOnPage(this.page!, destinationDir);
+    return this.onPage("download_audio", (page) => downloadAudioOnPage(page, destinationDir));
   }
 
   /**
@@ -728,6 +782,13 @@ export class BrowserSession {
    * follow-up question disturbs the source panel.
    */
   async extractCitations(answer: string, format: SourceFormat): Promise<ExtractCitationsResult> {
+    return this.exclusive("extract citations", () => this.extractCitationsUnlocked(answer, format));
+  }
+
+  private async extractCitationsUnlocked(
+    answer: string,
+    format: SourceFormat
+  ): Promise<ExtractCitationsResult> {
     if (format === "none" || !this.page || this.isPageClosedSafe()) {
       return { citations: [], formattedAnswer: answer };
     }
@@ -941,6 +1002,10 @@ export class BrowserSession {
    * Reset the chat history (start a new conversation)
    */
   async reset(): Promise<void> {
+    return this.exclusive("reset_session", () => this.resetUnlocked());
+  }
+
+  private async resetUnlocked(): Promise<void> {
     const resetOnce = async (): Promise<void> => {
       if (!this.initialized || !this.page || this.isPageClosedSafe()) {
         await this.init();
@@ -1032,6 +1097,8 @@ export class BrowserSession {
       inactive_seconds: (now - this.lastActivity) / 1000,
       message_count: this.messageCount,
       notebook_url: this.notebookUrl,
+      current_operation: this.lock.current,
+      queued_operations: this.lock.queued,
     };
   }
 

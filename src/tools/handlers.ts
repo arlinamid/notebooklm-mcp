@@ -240,12 +240,14 @@ export class ToolHandlers {
         // Progress: Asking question
         await sendProgress?.("Asking question to NotebookLM...", 2, 5);
 
-        // Ask the question (pass progress callback)
-        const rawAnswer = await session.ask(question, sendProgress, { sources });
-
-        // Extract citations from the same page session before any other call
-        // disturbs the source panel (issue #20).
-        const citationResult = await session.extractCitations(rawAnswer, source_format);
+        // Ask and extract citations as one locked step on the tab, so no other
+        // call disturbs the answer or the source panel in between (issue #20).
+        const citationResult = await session.askWithCitations(
+          question,
+          source_format,
+          sendProgress,
+          { sources }
+        );
         const baseAnswer = citationResult.formattedAnswer;
 
         const trimmed = baseAnswer.trimEnd();
@@ -330,6 +332,8 @@ export class ToolHandlers {
         inactive_seconds: number;
         message_count: number;
         notebook_url: string;
+        current_operation: string | null;
+        queued_operations: number;
       }>;
     }>
   > {
@@ -353,6 +357,8 @@ export class ToolHandlers {
           inactive_seconds: info.inactive_seconds,
           message_count: info.message_count,
           notebook_url: info.notebook_url,
+          current_operation: info.current_operation,
+          queued_operations: info.queued_operations,
         })),
       };
 
