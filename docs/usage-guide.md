@@ -4,6 +4,7 @@ Practical end-to-end walkthroughs for v3.2. Each section is a self-contained rec
 
 - [First-time setup](#first-time-setup)
 - [Multi-turn session pattern](#multi-turn-session-pattern)
+- [Finding and vetting sources](#finding-and-vetting-sources)
 - [Citations workflow](#citations-workflow)
 - [Audio Overview generation + download](#audio-overview-generation--download)
 - [Studio outputs: generate, wait, download](#studio-outputs-generate-wait-download)
@@ -117,6 +118,53 @@ When the task changes, either:
 - Close it: `{ "name": "close_session", "arguments": { "session_id": "ses_abc123" } }` — and start a new one with no `session_id`.
 
 Sessions auto-expire after `SESSION_TIMEOUT` seconds of inactivity (default `900` = 15 min).
+
+---
+
+## Finding and vetting sources
+
+Answers, audio and slides can only be as good as the sources, and NotebookLM's own search often brings weak ones. Vet before you build on them.
+
+### 1. Check what is there
+
+```json
+{ "name": "list_sources", "arguments": {} }
+```
+
+Each source has `type`, `url`, `words` and `origin`. A web page or PDF with a few hundred words is usually a landing page, abstract or paywall. Look inside:
+
+```json
+{ "name": "get_source", "arguments": { "source": "Reconstruction of the Széchenyi", "include_text": true, "max_chars": 3000 } }
+```
+
+`guide` is NotebookLM's own summary and keywords; `text` is what answers are grounded on.
+
+### 2. Search with one precise query
+
+Every run spends AI usage. Name the subject, the aspect, the kind of source and the timeframe:
+
+```json
+{ "name": "research_sources", "arguments": {
+  "query": "EU AI Act Article 6 high-risk classification — official EU texts and Commission guidelines 2024-2026"
+}}
+```
+
+Use `mode: "deep"` only for a broad survey (it runs for minutes and returns at once with `running`; call again without `query` later). The same query again costs nothing: it is answered from the notebook's research history.
+
+### 3. Import only what passes
+
+Open a candidate's URL when title and description are not enough. Then import the reliable ones, each with a reason:
+
+```json
+{ "name": "import_research_sources", "arguments": { "selections": [
+  { "index": 0, "reliability": "high", "reason": "EUR-Lex consolidated text of the regulation — primary legal source, current version." },
+  { "index": 4, "reliability": "medium", "reason": "European Commission Q&A page on high-risk systems, 2025; official but secondary." }
+]}}
+```
+
+Check every `warnings` entry with `get_source`; replace a landing page with the full-text URL (`add_source`). Then work from the vetted subset — `sources` on `ask_question` and the Studio tools.
+
+To keep certain sites out for good, set `NOTEBOOKLM_RESEARCH_BLOCKED_DOMAINS`, e.g. `scribd.com,pinterest.com`.
 
 ---
 

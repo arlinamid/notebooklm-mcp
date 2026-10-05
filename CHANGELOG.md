@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] - 2026-10-06
+
+### Added
+
+- `research_sources` — NotebookLM's own source search (Fast or Deep Research
+  over the web, Fast over Google Drive). It returns candidates only and never
+  imports. Every run spends AI usage, so queries under 4 words are refused
+  with advice on writing a precise one, a query that already ran in the
+  notebook is answered from its research history, and a run in progress is
+  reported instead of doubled. Deep runs list the candidates the report
+  cites, with the passage it drew from each; the report on request. Drive
+  runs (2-word minimum: file titles are precise) return Google Docs, Slides,
+  Sheets, PDFs and Word files, listed once each; a run that found nothing
+  ends as `failed` with advice to rephrase.
+- `import_research_sources` — imports only vetted candidates: each needs a
+  `reliability` of `high` or `medium` and a reason. Low-rated, unexplained,
+  duplicate and blocked-domain candidates are rejected
+  (`NOTEBOOKLM_RESEARCH_BLOCKED_DOMAINS`). Imported sources come back with
+  word counts; fewer than 500 indexed words is flagged as a likely landing
+  page, abstract or paywall.
+- `get_source` — one source in depth: metadata, NotebookLM's source guide
+  (summary and keywords) and the indexed text, in pages.
+
+### Changed
+
+- `list_sources` also returns type, URL (or YouTube channel), word and
+  character counts, status, origin (`research` or `added`) and the date
+  added.
+- The server instructions open the source section with source quality:
+  vet before each phase of work.
+
 ## [3.2.0] - 2026-10-05
 
 ### Added

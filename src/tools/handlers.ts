@@ -14,7 +14,14 @@ import type {
   UpdateNotebookInput,
 } from "../library/types.js";
 import type { AddSourceResult } from "../notebooklm/sources.js";
-import type { BrowserSession, StudioDownloadResult } from "../session/browser-session.js";
+import type {
+  BrowserSession,
+  InspectedSource,
+  ResearchImportResult,
+  StudioDownloadResult,
+} from "../session/browser-session.js";
+import type { ResearchCorpus, ResearchMode } from "../notebooklm/source-ops.js";
+import { vagueQueryReason, type ImportSelection } from "../notebooklm/research-policy.js";
 import type { StudioDownloadFormat } from "../notebooklm/studio-download.js";
 import { getOutputLanguageRpc, setOutputLanguageRpc } from "../notebooklm/rpc-ops.js";
 import { languageName, resolveLanguage } from "../notebooklm/language.js";
@@ -1586,6 +1593,146 @@ export class ToolHandlers {
       const sources = await s.listSources();
       return { sources, count: sources.length };
     });
+  }
+
+  /**
+   * Handle research_sources — start / look up a Fast or Deep Research run.
+   * Never imports; returns candidates for vetting.
+   */
+  async handleResearchSources(
+    args: NotebookTargetArgs & {
+      query?: string;
+      mode?: ResearchMode;
+      corpus?: ResearchCorpus;
+      task_id?: string;
+      wait_seconds?: number;
+      include_report?: boolean;
+      all_candidates?: boolean;
+    }
+  ): Promise<ToolResult<Record<string, unknown>>> {
+    const mode: ResearchMode = args.mode ?? "fast";
+    const corpus: ResearchCorpus = args.corpus ?? "web";
+    const query = args.query?.trim() || undefined;
+    if (query) {
+      const vague = vagueQueryReason(query, corpus);
+      if (vague) return { success: false, error: vague };
+      if (mode === "deep" && corpus === "drive") {
+        return {
+          success: false,
+          error: 'Deep Research searches the web only — use mode "fast" for Drive.',
+        };
+      }
+    }
+    const waitSeconds = Math.min(600, Math.max(0, args.wait_seconds ?? (mode === "deep" ? 0 : 60)));
+    return this.withNotebookSession("research_sources", args, async (s) => {
+      const { task, origin } = await s.research({
+        query,
+        mode,
+        corpus,
+        taskId: args.task_id,
+        waitMs: waitSeconds * 1000,
+      });
+      const showAll = args.all_candidates ?? task.mode !== "deep";
+      const candidates = task.candidates
+        .filter((c) => showAll || c.cited)
+        .map((c) => ({
+          ...c,
+          ...(c.passage && {
+            passage: c.passage.length > 300 ? `${c.passage.slice(0, 300)}…` : c.passage,
+          }),
+        }));
+      const notes: Record<typeof origin, string> = {
+        started: "",
+        history: "",
+        reused:
+          "This query already ran in this notebook — returned from its research history; no AI " +
+          "usage was spent.",
+        busy:
+          "Another research run is in progress in this notebook — it is shown here. Wait for it " +
+          "(call without `query`) before starting a new one.",
+      };
+      const next =
+        task.status === "running"
+          ? "Still running — call research_sources without `query` again in about a minute."
+          : task.status === "failed"
+            ? "NotebookLM found nothing for this query. Rephrase it with different, more " +
+              "distinctive terms (for Drive: words from the file titles or their content) " +
+              "rather than repeating it."
+            : "Vet the candidates (publisher, primary or secondary, date, relevance; open the URL " +
+              "when unsure), then import only the reliable ones with import_research_sources.";
+      return {
+        task_id: task.taskId,
+        status: task.status,
+        origin,
+        ...(notes[origin] && { note: notes[origin] }),
+        query: task.query,
+        mode: task.mode,
+        corpus: task.corpus,
+        started_at: task.startedAt,
+        ...(task.summary && { summary: task.summary }),
+        ...(task.report && {
+          report_title: task.reportTitle,
+          report_chars: task.report.length,
+          ...(args.include_report && { report: task.report }),
+        }),
+        candidate_count: task.candidates.length,
+        ...(!showAll && {
+          uncited_count: task.candidates.filter((c) => !c.cited).length,
+          candidates_note:
+            "Only candidates the report cites are listed; pass all_candidates: true for the rest.",
+        }),
+        candidates,
+        next_step: next,
+      };
+    });
+  }
+
+  /**
+   * Handle import_research_sources — import vetted candidates only.
+   */
+  async handleImportResearchSources(
+    args: NotebookTargetArgs & { task_id?: string; selections?: ImportSelection[] }
+  ): Promise<ToolResult<ResearchImportResult & { next_step?: string }>> {
+    if (!Array.isArray(args.selections) || args.selections.length === 0) {
+      return {
+        success: false,
+        error:
+          "`selections` must list the vetted candidates: [{ index, reliability: high|medium, reason }].",
+      };
+    }
+    return this.withNotebookSession("import_research_sources", args, async (s) => {
+      const result = await s.importResearch(args.task_id, args.selections!);
+      const warned = result.imported.filter((i) => i.warnings.length > 0);
+      return {
+        ...result,
+        ...(warned.length > 0 && {
+          next_step:
+            `Check ${warned.map((w) => `"${w.title}"`).join(", ")} with get_source ` +
+            "(include_text: true) — the indexed text looks incomplete.",
+        }),
+      };
+    });
+  }
+
+  /**
+   * Handle get_source — one source's metadata, guide and indexed text.
+   */
+  async handleGetSource(
+    args: NotebookTargetArgs & {
+      source: string;
+      include_text?: boolean;
+      offset?: number;
+      max_chars?: number;
+    }
+  ): Promise<ToolResult<{ source: InspectedSource }>> {
+    if (!args.source?.trim()) return { success: false, error: "`source` is required." };
+    return this.withNotebookSession("get_source", args, async (s) => ({
+      source: await s.inspectSource(args.source, {
+        includeText: args.include_text ?? false,
+        offset: Math.max(0, Math.floor(args.offset ?? 0)),
+        maxChars: Math.min(20_000, Math.max(200, Math.floor(args.max_chars ?? 4_000))),
+      }),
+    }));
   }
 
   /**

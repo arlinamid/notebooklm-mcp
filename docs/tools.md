@@ -1,6 +1,6 @@
 # Tools
 
-Every tool the server registers (34 under the `full` profile), with its parameters, an example where useful, and the return shape. Parameter tables are generated from the live tool schemas.
+Every tool the server registers (37 under the `full` profile), with its parameters, an example where useful, and the return shape. Parameter tables are generated from the live tool schemas.
 
 The server returns each tool result wrapped as `{ "success": true, "data": <object> }` (or `{ "success": false, "error": <string> }`). The shapes below describe the inner `data`.
 
@@ -66,7 +66,7 @@ Answers are **Markdown** (e.g. `**bold**`) with `[N]` citation markers; ranges s
 
 ## add_source
 
-Add a source to a notebook: a website (`url`), a YouTube video (`youtube`), pasted text (`text`) or local files (`file`). URLs, videos and text are added through NotebookLM's data API and the call waits (up to 90 s) until NotebookLM has processed them; files are uploaded through the Add-source dialog. An ambiguous reply is reconciled against the notebook before anything is retried, so a source is never added twice.
+Add a source to a notebook: a website (`url`), a YouTube video (`youtube`), pasted text (`text`) or local files (`file`). URLs, videos and text are added through NotebookLM's data API and the call waits (up to 90 s) until NotebookLM has processed them; files are uploaded through the Add-source dialog. To find new sources use [`research_sources`](#research_sources); Google Drive files can be found and imported that way (`corpus: "drive"`). An ambiguous reply is reconciled against the notebook before anything is retried, so a source is never added twice.
 
 ### Parameters
 
@@ -106,6 +106,141 @@ Add a source to a notebook: a website (`url`), a YouTube video (`youtube`), past
 ```
 
 Local file paths must lie inside the client's roots or `NOTEBOOKLM_FILE_ROOTS`.
+
+---
+
+## research_sources
+
+Run NotebookLM's own source search — the "Search the web for new sources" box: **Fast Research** (about 10 candidates in ~15 s, web or Google Drive) or **Deep Research** (several minutes, dozens of pages plus a written report, web only). It **only returns candidates; nothing is imported.** Vet them, then import the reliable ones with [`import_research_sources`](#import_research_sources).
+
+Every run spends the account's AI usage, Deep Research far more. NotebookLM's picks are often weak — encyclopedia pages, blogs, marketing copy, a repository's landing page instead of the paper — and a loose query makes that worse. So the server:
+
+- refuses queries under 4 words, with advice on writing a precise one (subject + aspect + kind of source + timeframe + region / language);
+- answers a query that already ran in this notebook (same mode and corpus; case, spacing and punctuation ignored) from the research history, without a new run (`origin: "reused"`);
+- reports a run that is still in progress instead of starting a second one (`origin: "busy"`).
+
+Without `query` it reads the newest run, or `task_id`.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `query` | string | no | The search request. Omit to read the newest run / `task_id`. |
+| `mode` | `fast` / `deep` | no | Default `fast`. |
+| `corpus` | `web` / `drive` | no | Default `web`; `drive` searches the user's Google Drive (`fast` only). |
+| `task_id` | string | no | A run to read (without `query`). |
+| `wait_seconds` | number | no | How long to wait for a new run (default 60 fast, 0 deep; max 600). A deep run takes about 4–6 minutes. |
+| `include_report` | boolean | no | Deep runs: include the full Markdown report. |
+| `all_candidates` | boolean | no | Deep runs list only the candidates the report cites; `true` lists every consulted page. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Example
+
+```json
+{
+  "name": "research_sources",
+  "arguments": {
+    "query": "Széchenyi Chain Bridge Budapest 2021-2023 reconstruction official engineering details",
+    "mode": "fast"
+  }
+}
+```
+
+### Return shape
+
+```jsonc
+{
+  "task_id": "2d240123-…",
+  "status": "completed",                 // or "running"
+  "origin": "started",                   // started | reused | busy | history
+  "query": "Széchenyi Chain Bridge …",
+  "mode": "fast",
+  "corpus": "web",
+  "started_at": "2026-10-06T…Z",
+  "summary": "Engineering documents and detailed studies on the 2021–2023 reconstruction.",  // fast
+  "report_title": "…", "report_chars": 28798,  // deep; `report` with include_report
+  "candidate_count": 10,
+  "candidates": [
+    {
+      "index": 3,
+      "url": "https://bkk.hu/fejlesztesek/…",
+      "title": "Legfontosabb kulturális örökségünk, a Lánchíd felújítása - BKK.hu",
+      "description": "Official investor summary with the key figures.",
+      "type": "web",                     // web | google_doc | google_slides | google_sheets | drive_pdf | drive_word
+      "imported": false
+      // deep runs: "cited": true, "citation": 4, "passage": "…the text the report drew from it…"
+    }
+  ],
+  "next_step": "Vet the candidates …, then import only the reliable ones with import_research_sources."
+}
+```
+
+---
+
+## import_research_sources
+
+Import vetted candidates of a finished `research_sources` run. **Only reliable references are imported:** every selection needs `reliability` (`high` or `medium`) and a `reason` of at least 20 characters stating why — publisher or author, primary or secondary, date, what it covers for the question. Rejected (and listed in `rejected`): `low` or other ratings, missing or too short reasons, unknown indexes, URLs already in the notebook and domains in `NOTEBOOKLM_RESEARCH_BLOCKED_DOMAINS`.
+
+The call waits until NotebookLM has processed the imports. Each comes back with its metadata and `warnings`: a web, PDF or document source with fewer than 500 indexed words is flagged — possibly a landing page, abstract or paywall rather than the document.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `selections` | object[] | yes | `{ index, reliability: "high" \| "medium", reason }` per candidate. |
+| `task_id` | string | no | Research run (default: the newest finished one). |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "taskId": "2d240123-…",
+  "imported": [
+    {
+      "id": "3cc7bbad-…", "title": "Reconstruction of the Széchenyi Chain Bridge in Budapest",
+      "type": "web", "url": "https://real.mtak.hu/246902/", "words": 460, "characters": 1152,
+      "status": "ready", "origin": "research", "addedAt": "…",
+      "reliability": "medium", "reason": "…",
+      "warnings": ["Only 460 words were indexed — possibly a landing page …"]
+    }
+  ],
+  "rejected": [{ "index": 6, "title": "…", "reason": "reliability \"low\" — only candidates vetted as \"high\" or \"medium\" may be imported …" }],
+  "next_step": "Check \"Reconstruction of …\" with get_source (include_text: true) …"   // when something was flagged
+}
+```
+
+---
+
+## get_source
+
+Inspect one source for source criticism: metadata, NotebookLM's source guide and — with `include_text` — the text NotebookLM actually indexed, which is what answers are grounded on. That text is not always what the page shows: cookie banners, navigation, a login wall or a landing page end up there too. Read-only.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `source` | string | yes | Source id (from `list_sources`) or a unique part of its title. |
+| `include_text` | boolean | no | Also return the indexed text (default false). |
+| `offset` | number | no | Text offset in characters (default 0). |
+| `max_chars` | number | no | Characters of text to return (default 4000, max 20000). |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "source": {
+    "id": "c33daf52-…", "title": "Széchenyi lánchíd – Wikipédia",
+    "type": "web", "url": "https://hu.wikipedia.org/wiki/…", "channel": null,
+    "words": 10108, "characters": 55550, "status": "ready", "origin": "added",
+    "addedAt": "2026-10-04T…Z", "mimeType": null, "driveId": null,
+    "guide": { "summary": "The source describes …", "keywords": ["Széchenyi lánchíd", "…"] },
+    "warnings": [],
+    "text": { "content": "…", "offset": 0, "totalChars": 73737, "nextOffset": 4000 }   // include_text
+  }
+}
+```
 
 ---
 
@@ -266,7 +401,7 @@ List the notebook's Studio library — generated outputs and notes — with thei
 
 ## list_sources
 
-List the notebook's sources with their ids and whether the chat currently uses each one (`selected`). Use the ids in `sources` arguments when titles repeat. Read-only.
+List the notebook's sources with their ids and whether the chat currently uses each one (`selected`), plus — over the data API — type, URL (or YouTube channel), word and character counts, processing status, origin (`research` when NotebookLM marks it as a research import — web pages and Google Docs, not Word files) and the date added. A web or PDF source with very few words is usually a landing page or paywall; inspect it with [`get_source`](#get_source). Use the ids in `sources` arguments when titles repeat. Read-only.
 
 ### Parameters
 
@@ -280,7 +415,12 @@ List the notebook's sources with their ids and whether the chat currently uses e
 {
   "count": 11,
   "sources": [
-    { "id": "c33daf52-…", "title": "Chain Bridge – Wikipedia", "kind": "web", "selected": true }
+    {
+      "id": "c33daf52-…", "title": "Chain Bridge – Wikipedia", "kind": "web", "selected": true,
+      "type": "web", "url": "https://en.wikipedia.org/wiki/…", "channel": null,
+      "words": 10108, "characters": 55550, "status": "ready", "origin": "added",
+      "addedAt": "2026-10-04T…Z"
+    }
   ]
 }
 ```

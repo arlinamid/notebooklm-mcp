@@ -34,6 +34,8 @@ import { log } from "../utils/logger.js";
 export const TASK_TOOLS = new Set([
   "ask_question",
   "add_source",
+  "research_sources",
+  "import_research_sources",
   "generate_audio",
   "generate_studio_artifact",
   "download_audio",

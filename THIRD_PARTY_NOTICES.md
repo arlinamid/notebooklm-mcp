@@ -8,7 +8,8 @@ The bundled prompt packs have their own notices in [prompts/THIRD_PARTY_NOTICES.
 <https://github.com/jacob-bd/gemini-notebook-mcp-cli>
 
 The NotebookLM `batchexecute` RPC ids, request/response format and Studio artifact
-layouts used by `src/notebooklm/rpc.ts` and `src/notebooklm/studio-download.ts` follow
+layouts used by `src/notebooklm/rpc.ts`, `src/notebooklm/source-ops.ts` and
+`src/notebooklm/studio-download.ts` follow
 this project (reimplemented in TypeScript, verified against the live service).
 
 ```
