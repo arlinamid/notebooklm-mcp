@@ -166,7 +166,7 @@ Without `query` it reads the newest run, or `task_id`.
       "url": "https://bkk.hu/fejlesztesek/…",
       "title": "Legfontosabb kulturális örökségünk, a Lánchíd felújítása - BKK.hu",
       "description": "Official investor summary with the key figures.",
-      "type": "web",                     // web | google_doc | google_slides | google_sheets
+      "type": "web",                     // web | google_doc | google_slides | google_sheets | drive_pdf | drive_word
       "imported": false
       // deep runs: "cited": true, "citation": 4, "passage": "…the text the report drew from it…"
     }
@@ -401,7 +401,7 @@ List the notebook's Studio library — generated outputs and notes — with thei
 
 ## list_sources
 
-List the notebook's sources with their ids and whether the chat currently uses each one (`selected`), plus — over the data API — type, URL (or YouTube channel), word and character counts, processing status, origin (`research` when imported from `research_sources`) and the date added. A web or PDF source with very few words is usually a landing page or paywall; inspect it with [`get_source`](#get_source). Use the ids in `sources` arguments when titles repeat. Read-only.
+List the notebook's sources with their ids and whether the chat currently uses each one (`selected`), plus — over the data API — type, URL (or YouTube channel), word and character counts, processing status, origin (`research` when NotebookLM marks it as a research import — web pages and Google Docs, not Word files) and the date added. A web or PDF source with very few words is usually a landing page or paywall; inspect it with [`get_source`](#get_source). Use the ids in `sources` arguments when titles repeat. Read-only.
 
 ### Parameters
 

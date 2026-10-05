@@ -20,7 +20,8 @@ import type {
 /** Indexed text below this many words usually is a landing page, paywall or cookie wall. */
 export const THIN_SOURCE_WORDS = 500;
 
-const MIN_QUERY_WORDS = 4;
+/** Web searches need context; Drive searches the user's own files, where a few keywords are precise. */
+const MIN_QUERY_WORDS = { web: 4, drive: 2 } as const;
 const MIN_REASON_CHARS = 20;
 
 const QUERY_HELP =
@@ -31,17 +32,18 @@ const QUERY_HELP =
   'Commission guidelines 2024-2026" instead of "AI Act".';
 
 /** Null when the query is specific enough, else the reason it is refused. */
-export function vagueQueryReason(query: string): string | null {
+export function vagueQueryReason(query: string, corpus: ResearchCorpus = "web"): string | null {
   const words = query
     .trim()
     .split(/\s+/)
     .filter((w) => /[\p{L}\p{N}]{2,}/u.test(w));
-  if (words.length < MIN_QUERY_WORDS) {
-    return (
-      `The research query "${query.trim()}" is too vague (${words.length} word` +
-      `${words.length === 1 ? "" : "s"}). A vague query returns loosely related, popular pages ` +
-      `and spends AI usage on a run you will have to repeat. ${QUERY_HELP}`
-    );
+  if (words.length < MIN_QUERY_WORDS[corpus]) {
+    return corpus === "drive"
+      ? `The Drive query "${query.trim()}" is too vague. Name the files you look for — ` +
+          "distinctive title words, the topic, the folder's theme — in at least 2 words."
+      : `The research query "${query.trim()}" is too vague (${words.length} word` +
+          `${words.length === 1 ? "" : "s"}). A vague query returns loosely related, popular ` +
+          `pages and spends AI usage on a run you will have to repeat. ${QUERY_HELP}`;
   }
   return null;
 }

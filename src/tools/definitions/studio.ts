@@ -339,8 +339,9 @@ export const listSourcesTool: Tool = {
     "List the notebook's sources: `id` (stable UUID), `title`, `kind` (source-type glyph, " +
     "e.g. `description` = pasted text, `markdown` = converted note, `web`) and `selected` " +
     "(whether the chat currently uses it), plus `type`, `url` (or YouTube `channel`), " +
-    "`words`, `characters`, `status`, `origin` (`research` = imported from " +
-    "research_sources) and `addedAt` for a quick quality overview — a web or PDF source " +
+    "`words`, `characters`, `status`, `origin` (`research` = NotebookLM marks it as a " +
+    "research import; not set for Word files) and `addedAt` for a quick quality overview — " +
+    "a web or PDF source " +
     "with very few words is usually a landing page or paywall (inspect it with " +
     "`get_source`). Use the ids in `sources` arguments of `ask_question`, " +
     "`generate_studio_artifact` and `generate_audio` when titles are duplicated or " +

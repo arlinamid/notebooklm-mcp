@@ -15,7 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with advice on writing a precise one, a query that already ran in the
   notebook is answered from its research history, and a run in progress is
   reported instead of doubled. Deep runs list the candidates the report
-  cites, with the passage it drew from each; the report on request.
+  cites, with the passage it drew from each; the report on request. Drive
+  runs (2-word minimum: file titles are precise) return Google Docs, Slides,
+  Sheets, PDFs and Word files, listed once each; a run that found nothing
+  ends as `failed` with advice to rephrase.
 - `import_research_sources` — imports only vetted candidates: each needs a
   `reliability` of `high` or `medium` and a reason. Low-rated, unexplained,
   duplicate and blocked-domain candidates are rejected

@@ -1614,7 +1614,7 @@ export class ToolHandlers {
     const corpus: ResearchCorpus = args.corpus ?? "web";
     const query = args.query?.trim() || undefined;
     if (query) {
-      const vague = vagueQueryReason(query);
+      const vague = vagueQueryReason(query, corpus);
       if (vague) return { success: false, error: vague };
       if (mode === "deep" && corpus === "drive") {
         return {
@@ -1654,8 +1654,12 @@ export class ToolHandlers {
       const next =
         task.status === "running"
           ? "Still running — call research_sources without `query` again in about a minute."
-          : "Vet the candidates (publisher, primary or secondary, date, relevance; open the URL " +
-            "when unsure), then import only the reliable ones with import_research_sources.";
+          : task.status === "failed"
+            ? "NotebookLM found nothing for this query. Rephrase it with different, more " +
+              "distinctive terms (for Drive: words from the file titles or their content) " +
+              "rather than repeating it."
+            : "Vet the candidates (publisher, primary or secondary, date, relevance; open the URL " +
+              "when unsure), then import only the reliable ones with import_research_sources.";
       return {
         task_id: task.taskId,
         status: task.status,

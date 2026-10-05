@@ -1036,7 +1036,7 @@ export class BrowserSession {
     let task: ResearchTask | undefined;
     for (;;) {
       task = find(await list());
-      if (task?.status === "completed" || Date.now() - started >= opts.waitMs) break;
+      if ((task && task.status !== "running") || Date.now() - started >= opts.waitMs) break;
       const secs = Math.round((Date.now() - started) / 1000);
       void reportProgress(`Research running (${secs} s)…`);
       await abortable(new Promise((resolve) => setTimeout(resolve, RESEARCH_POLL_MS)));

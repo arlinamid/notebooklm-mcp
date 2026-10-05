@@ -13,7 +13,8 @@
  *   Ljjv0c  ← [[query, corpus], null, 1, notebookId]          fast (web 1 | Drive 2) → [taskId]
  *   QA9ei   ← [null, [1], [query, 1], 5, notebookId]          deep (web only)        → [taskId]
  *   e3bVqc  ← [null, null, notebookId] → [[[taskId, [nbId, [query, corpus], mode, [cands, summary], status, …], …]…]]
- *             status 1 running · 2 done · 6 done and (partly) imported; mode 1 fast · 5 deep
+ *             status 1 running · 2 done · 3 failed (no result) · 6 done and (partly)
+ *             imported; mode 1 fast · 5 deep
  *             fast candidate: [url, title, description, type, …, imported?]
  *             deep candidate: [url, title, description?, type, null, null,
  *                              [null, 1 cited | 2 consulted, supporting passage], null, citation#]
@@ -197,6 +198,8 @@ const CANDIDATE_TYPES: Record<number, string> = {
   2: "google_doc",
   3: "google_slides",
   5: "deep_report",
+  6: "drive_pdf",
+  7: "drive_word",
   8: "google_sheets",
 };
 
@@ -205,7 +208,7 @@ export interface ResearchCandidate {
   url: string | null;
   title: string;
   description: string | null;
-  /** web, google_doc, google_slides or google_sheets. */
+  /** web, or a Drive file: google_doc, google_slides, google_sheets, drive_pdf, drive_word. */
   type: string;
   /** Already imported into the notebook. */
   imported: boolean;
@@ -221,7 +224,7 @@ export interface ResearchTask {
   query: string;
   corpus: ResearchCorpus;
   mode: ResearchMode;
-  status: "running" | "completed";
+  status: "running" | "completed" | "failed";
   /** Fast research: a one-line description of what was found. */
   summary: string | null;
   /** Deep research: the report's title and Markdown text. */
@@ -259,9 +262,12 @@ function parseTask(raw: unknown): ResearchTask | null {
   const raws = at(found, 0);
   const rawCandidates = Array.isArray(raws) ? raws : [];
   const deep = info[2] === 5;
+  // Drive results list each file twice (different descriptions): keep the first.
+  const seen = new Set<string>();
   const candidates = rawCandidates
     .map((c, i) => parseCandidate(c, i, deep))
-    .filter((c): c is ResearchCandidate => c !== null);
+    .filter((c): c is ResearchCandidate => c !== null)
+    .filter((c) => !c.url || (!seen.has(c.url) && seen.add(c.url) !== undefined));
   const reportEntry = rawCandidates.find((c) => at(c, 3) === 5);
   const status = num(info[4]);
   return {
@@ -269,7 +275,7 @@ function parseTask(raw: unknown): ResearchTask | null {
     query: str(at(info, 1, 0)) ?? "",
     corpus: at(info, 1, 1) === 2 ? "drive" : "web",
     mode: info[2] === 5 ? "deep" : "fast",
-    status: status === 2 || status === 6 ? "completed" : "running",
+    status: status === 2 || status === 6 ? "completed" : status === 3 ? "failed" : "running",
     summary: str(at(found, 1)),
     reportTitle: str(at(reportEntry, 1)),
     report: str(at(reportEntry, 6, 0)),
@@ -334,6 +340,8 @@ export async function importResearchRpc(
     google_doc: "application/vnd.google-apps.document",
     google_slides: "application/vnd.google-apps.presentation",
     google_sheets: "application/vnd.google-apps.spreadsheet",
+    drive_pdf: "application/pdf",
+    drive_word: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   };
   const entries = candidates.map((c) => {
     const driveId = c.type in mime ? c.url?.match(/[?&]id=([^&]+)/)?.[1] : undefined;
