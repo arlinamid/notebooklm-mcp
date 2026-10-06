@@ -154,7 +154,7 @@ Plugins bundle the server and the skill; the marketplace installs them from the 
 |---|---|
 | Claude Code | `claude plugin marketplace add arlinamid/notebooklm-mcp`, then `claude plugin install notebooklm@arlinamid-notebooklm` |
 | Claude Desktop | add the marketplace `arlinamid/notebooklm-mcp` in the plugin settings, or upload the ZIP from `skill zip` |
-| Codex | `codex plugin marketplace add arlinamid/notebooklm-mcp` |
+| Codex | `codex plugin marketplace add arlinamid/notebooklm-mcp`, then `codex plugin add notebooklm@arlinamid-notebooklm` |
 | Cursor | the package and repository are a Cursor plugin (`.cursor-plugin/plugin.json`) |
 | Gemini CLI | `gemini extensions install https://github.com/arlinamid/notebooklm-mcp` (server + skill; the repository is a Gemini extension) |
 
