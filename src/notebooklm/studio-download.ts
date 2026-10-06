@@ -47,7 +47,7 @@ export type StudioDownloadPlan = { artifact: StudioDownloadTarget; ext: string }
   | { kind: "text"; content: string }
 );
 
-type Raw = unknown[];
+export type Raw = unknown[];
 const at = (v: unknown, ...path: number[]): unknown =>
   path.reduce<unknown>((cur, i) => (Array.isArray(cur) ? cur[i] : undefined), v);
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -59,7 +59,20 @@ export function artifactType(a: Raw): string {
   return INTERACTIVE_FORMATS[Number(at(a, 9, 1, 0))] ?? "unknown";
 }
 
-function isReady(a: Raw): boolean {
+/** The notebook's Studio library (suggested-but-not-generated items excluded). */
+export async function listRawArtifacts(page: Page, notebookId: string): Promise<Raw[]> {
+  const result = await callRpc<unknown[]>(
+    page,
+    RPC.listArtifacts,
+    [[2], notebookId, 'NOT artifact.status = "ARTIFACT_STATUS_SUGGESTED"'],
+    `/notebook/${notebookId}`
+  );
+  return ((Array.isArray(result?.[0]) ? result[0] : result) ?? []).filter(
+    (a): a is Raw => Array.isArray(a) && typeof a[0] === "string"
+  );
+}
+
+export function isReady(a: Raw): boolean {
   if (a[4] === READY) return true;
   // Some finished audio reports status 2 while already exposing media URLs.
   return a[2] === 1 && a[4] === 2 && Array.isArray(at(a, 6, 5));
@@ -74,16 +87,7 @@ export async function resolveStudioDownload(
   notebookId: string,
   want: { artifactId?: string; type?: string; format?: StudioDownloadFormat }
 ): Promise<StudioDownloadPlan> {
-  const path = `/notebook/${notebookId}`;
-  const result = await callRpc<unknown[]>(
-    page,
-    RPC.listArtifacts,
-    [[2], notebookId, 'NOT artifact.status = "ARTIFACT_STATUS_SUGGESTED"'],
-    path
-  );
-  const all = ((Array.isArray(result?.[0]) ? result[0] : result) ?? []).filter(
-    (a): a is Raw => Array.isArray(a) && typeof a[0] === "string"
-  );
+  const all = await listRawArtifacts(page, notebookId);
   const describe = (a: Raw) => `${artifactType(a)} "${String(a[1])}" (${String(a[0])})`;
 
   let target: Raw | undefined;
@@ -152,7 +156,12 @@ export async function resolveStudioDownload(
     case "quiz":
     case "flashcards":
     case "mind_map": {
-      const res = await callRpc<unknown[]>(page, RPC.getArtifact, [artifact.id], path);
+      const res = await callRpc<unknown[]>(
+        page,
+        RPC.getArtifact,
+        [artifact.id],
+        `/notebook/${notebookId}`
+      );
       const html = str(at(res, 0, 9, 0));
       if (!html) throw new Error(`No content for ${describe(target)}.`);
       if (want.format === "html") return text(html, "html");

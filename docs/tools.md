@@ -503,6 +503,58 @@ List the notebook's sources with their ids and whether the chat currently uses e
 
 ---
 
+## rename_source
+
+Renames a source (sidebar → More → "Rename source"; RPC `b7Wfje`, verified from the reply). The tab is reloaded so UI-based reads show the new title.
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `source` | string | yes | Source id, exact title, or unique title substring. |
+| `title` | string | yes | New title. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting. |
+
+Returns `{ id, from, to }`.
+
+---
+
+## rename_studio_artifact
+
+Renames a Studio output (item menu → "Rename"; RPC `rc3d8d`). Notes are not covered.
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `artifact` | string | yes | Item id (or unique prefix) from `list_studio_artifacts`, exact title, or unique title substring. |
+| `title` | string | yes | New title. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting. |
+
+Returns `{ id, type, from, to }`.
+
+---
+
+## get_studio_artifact
+
+NotebookLM's "View prompt and sources" for one Studio output, read from the Studio library data (no dialog).
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `artifact` | string | yes | Item id (or unique prefix), exact title, or unique title substring. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting. |
+
+```jsonc
+{
+  "id": "d312f03f-…", "title": "Chain Bridge Evolution", "type": "slide_deck",
+  "status": "ready", "prompt": "Három dia a Lánchíd történetéről.", "language": "hu",
+  "template": null,            // report template ("Study Guide", "Custom Report", …)
+  "createdAt": "2026-10-05T08:59:33.000Z",
+  "sourceIds": ["c33daf52-…"],
+  "sources": [{ "id": "c33daf52-…", "title": "Széchenyi lánchíd – Wikipédia" }]  // title null = source deleted since
+}
+```
+
+`prompt` is null when the output was generated without instructions, and for data tables (their prompt is not stored where it can be read).
+
+---
+
 ## save_answer_as_note
 
 Pin a chat answer as a note in the Studio panel ("Save to note") — the latest answer, or the answer to `question`. When the latest answer was asked through the data API, the tab is reloaded first so the right answer is saved.
@@ -791,11 +843,96 @@ Returns the updated entry.
 
 ## remove_notebook
 
-Removes the entry from the local library only — does not delete the notebook in NotebookLM.
+Removes the entry from the local library only — does not delete the notebook in NotebookLM (use `delete_notebook` for that).
 
 | Name | Type | Required |
 |---|---|---|
 | `id` | string | yes |
+
+---
+
+## create_notebook
+
+Creates a new, empty notebook in the signed-in Google account (RPC `CCqFvf`), adds it to the library and, unless `select: false`, makes it the active notebook.
+
+| Name | Type | Required |
+|---|---|---|
+| `title` | string | yes |
+| `description` | string | no |
+| `topics` | string[] | no |
+| `use_cases` | string[] | no |
+| `tags` | string[] | no — default `["created", "own"]` |
+| `select` | boolean | no — default `true` |
+
+Returns the library entry, the NotebookLM `uuid` and `selected`.
+
+---
+
+## rename_notebook
+
+Renames the notebook in NotebookLM itself (RPC `s0tc2d`, verified from the reply) and updates the library name. `update_notebook` changes only the local name.
+
+| Name | Type | Required |
+|---|---|---|
+| `id` | string | yes — library id |
+| `title` | string | yes |
+
+---
+
+## delete_notebook
+
+**Permanently** deletes the notebook from the Google account — sources, notes and Studio outputs included (RPC `WWINqb`, verified by re-reading the account's notebook list) — closes its sessions and removes the library entry. When the client supports elicitation the user is asked directly; otherwise `confirm: true` is required.
+
+| Name | Type | Required |
+|---|---|---|
+| `id` | string | yes — library id |
+| `confirm` | boolean | only without elicitation |
+
+---
+
+## pin_notebook
+
+Pins a notebook to the top of the homepage, or unpins it (RPC `LQhfEb`, verified from the reply).
+
+| Name | Type | Required |
+|---|---|---|
+| `id` | string | yes — library id |
+| `pinned` | boolean | no — default `true` |
+
+---
+
+## list_collections
+
+No parameters. The account's collections (homepage → Collections; RPC `I3xc3c`): `id`, `name`, `emoji` and `notebooks` — each with `uuid`, `title` and `library_id` (null when the notebook is not in the library).
+
+---
+
+## manage_collection
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `action` | `create` / `update` / `delete` | yes | |
+| `collection` | string | update, delete | Collection id or exact name. |
+| `name` | string | create; optional for update | Name / new name. |
+| `add_notebooks` | string[] | no | Library ids, notebook URLs or UUIDs. |
+| `remove_notebooks` | string[] | no | update only. |
+| `confirm` | boolean | delete without elicitation | |
+
+Create uses RPC `agX4Bc`, changes `le8sX` (one notebook per call, as the "Add to collection" dialog does), delete `GyzE7e`; every change is verified by re-reading the collections. Deleting a collection keeps its notebooks and asks the user first.
+
+---
+
+## share_notebook
+
+Reads or changes link sharing (RPCs `JFMDGd`, `QDyure`).
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `id` | string | yes | Library id. |
+| `public` | boolean | no | Omit to read; `true` = anyone with the link can view (asks the user); `false` = restricted. |
+| `confirm` | boolean | `public: true` without elicitation | |
+
+Returns `public`, `people` (`email`, `name`, `role`: owner / editor / viewer), `url` and `changed`. Inviting people is not supported — it sends them email.
 
 ---
 

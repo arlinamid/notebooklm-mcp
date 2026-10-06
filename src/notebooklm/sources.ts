@@ -215,6 +215,9 @@ export async function countSources(page: Page): Promise<number> {
  *   3. Last resort: navigate to `?addSource=true`, which auto-opens.
  */
 async function openAddSourceOverlay(page: Page): Promise<void> {
+  // A promo can mount after the first sweep (it animates in late on a fresh
+  // notebook); marking it keeps `overlayPane` from matching it.
+  await dismissPromoDialogs(page);
   if (await isOverlayVisible(page)) {
     log.info("  ✅ Add-source dialog already open, reusing");
     return;

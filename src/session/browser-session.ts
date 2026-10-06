@@ -108,12 +108,18 @@ import {
   importResearchRpc,
   listResearchRpc,
   listSourceDetailsRpc,
+  renameSourceRpc,
   startResearchRpc,
   type ResearchCorpus,
   type ResearchMode,
   type ResearchTask,
   type SourceDetails,
 } from "../notebooklm/source-ops.js";
+import {
+  findStudioItem,
+  renameStudioItemRpc,
+  type StudioItemDetails,
+} from "../notebooklm/studio-ops.js";
 import {
   THIN_SOURCE_WORDS,
   findEarlierRun,
@@ -781,14 +787,19 @@ export class BrowserSession {
    */
   async addSource(input: AddSourceInput): Promise<AddSourceResult> {
     return this.onPage("add_source", async (page) => {
+      // Set from the tryRpc callback; the cast stops TS narrowing it to `null`.
+      let rpcFailure = null as string | null;
       if (input.type !== "file" && input.content.trim()) {
         const type = input.type;
-        const viaRpc = await this.tryRpc("add_source", () =>
-          addSourcesRpc(page, this.notebookId(), {
-            type,
-            content: input.content,
-            title: input.title,
-          })
+        const viaRpc = await this.tryRpc(
+          "add_source",
+          () =>
+            addSourcesRpc(page, this.notebookId(), {
+              type,
+              content: input.content,
+              title: input.title,
+            }),
+          (reason) => (rpcFailure = reason)
         );
         if (viaRpc) {
           // The sidebar does not learn about sources added outside the UI;
@@ -809,7 +820,11 @@ export class BrowserSession {
           };
         }
       }
-      return addSourceToPage(page, input);
+      const viaUi = await addSourceToPage(page, input);
+      if (!viaUi.success && rpcFailure) {
+        viaUi.message = `${viaUi.message ?? "UI path failed"} (the RPC path failed first: ${rpcFailure})`;
+      }
+      return viaUi;
     });
   }
 
@@ -989,6 +1004,65 @@ export class BrowserSession {
         };
       }
       return result;
+    });
+  }
+
+  /** Rename a source (sidebar menu → Rename source); returns old and new title. */
+  async renameSource(
+    ref: string,
+    title: string
+  ): Promise<{ id: string; from: string; to: string }> {
+    return this.onPage("rename_source", async (page) => {
+      const notebookId = this.notebookId();
+      const details = await this.requireRpc("rename_source", () =>
+        listSourceDetailsRpc(page, notebookId)
+      );
+      const [id] = await resolveSourceIds(details, [ref]);
+      const from = details.find((d) => d.id === id)!.title;
+      const to = await this.requireRpc("rename_source", () =>
+        renameSourceRpc(page, notebookId, id, title)
+      );
+      // The sidebar does not learn about RPC edits; reload so UI reads match.
+      await this.reloadPage(page, details.length);
+      return { id, from, to };
+    });
+  }
+
+  /** A Studio item's prompt, language and sources ("View prompt and sources"). */
+  async studioItemDetails(
+    ref: string
+  ): Promise<StudioItemDetails & { sources: Array<{ id: string; title: string | null }> }> {
+    return this.onPage("get_studio_artifact", async (page) => {
+      const notebookId = this.notebookId();
+      const item = await this.requireRpc("get_studio_artifact", () =>
+        findStudioItem(page, notebookId, ref)
+      );
+      const titles = new Map(
+        (
+          await this.tryRpc("get_studio_artifact", () => listSourceDetailsRpc(page, notebookId))
+        )?.map((d) => [d.id, d.title]) ?? []
+      );
+      // A deleted source keeps its id here but has no title any more.
+      const sources = item.sourceIds.map((id) => ({ id, title: titles.get(id) ?? null }));
+      return { ...item, sources };
+    });
+  }
+
+  /** Rename a Studio item (item menu → Rename); returns old and new title. */
+  async renameStudioItem(
+    ref: string,
+    title: string
+  ): Promise<{ id: string; type: string; from: string; to: string }> {
+    return this.onPage("rename_studio_artifact", async (page) => {
+      const notebookId = this.notebookId();
+      const item = await this.requireRpc("rename_studio_artifact", () =>
+        findStudioItem(page, notebookId, ref)
+      );
+      const to = await this.requireRpc("rename_studio_artifact", () =>
+        renameStudioItemRpc(page, notebookId, item.id, title)
+      );
+      await this.reloadPage(page, 0);
+      return { id: item.id, type: item.type, from: item.title, to };
     });
   }
 
@@ -1247,13 +1321,18 @@ export class BrowserSession {
     }
   }
 
-  private async tryRpc<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
+  private async tryRpc<T>(
+    label: string,
+    fn: () => Promise<T>,
+    onFallback?: (reason: string) => void
+  ): Promise<T | null> {
     if (!rpcEnabled()) return null;
     try {
       return await fn();
     } catch (error) {
       if (!(error instanceof RpcError) || error.code === 16) throw error;
       log.warning(`  ⚠️  ${label}: RPC path failed (${error.message}) — using the UI instead`);
+      onFallback?.(error.message);
       return null;
     }
   }

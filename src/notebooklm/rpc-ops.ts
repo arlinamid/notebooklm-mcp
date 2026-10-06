@@ -12,6 +12,17 @@
  *   wXbhsf  → [[[title, sources, id, emoji, null, meta], …]]; meta[0] 1 = owned,
  *             meta[8] = created [sec, ns]
  *   izAoDd  ← [[sourceData…], id, [2], settings] → [[[[sourceId], title, meta, [null, status]]…]]
+ *   rLM1Ne  on a notebook without sources has `null` where the source list goes
+ *   CCqFvf  ← [title, null, null, [2], settings] → notebook (same layout as rLM1Ne[0])
+ *   s0tc2d  ← [id, [[null, null, null, [null, title]]]] → notebook (renamed)
+ *   WWINqb  ← [[id], [2]] → [] — permanent delete
+ *   LQhfEb  ← [header, id, [null, [1|0]], [["notebook_lm_state.is_pinned"]]] → [[null, [pinned]]]
+ *   I3xc3c  ← [header, null, 3] → [null, [[name, [nbId…], id, emoji]…]] — collections
+ *   agX4Bc  ← [header, null ×4, [[name], null, [nbId…]], 3] → [null, null, [collection…]]
+ *   le8sX   ← [header, null, id, [[null ×3, [[addId]], [[removeId]]], [[name]] | []], 3]
+ *   GyzE7e  ← [header, null, [id…], 3] → [] — delete collections
+ *   JFMDGd  ← [id, [2]] → [[[email, role, [], [name, avatar]]…], [public]?, …]
+ *   QDyure  ← [[[id, null, [1 public | 0 restricted], [0, ""]]], 1, null, [2]]
  *   tGMBJ / V5N4be are not used: deletions stay on the server-acknowledged UI path
  *   chat goal 1 default · 2 custom · 3 learning guide; length 1 default · 4 longer · 5 shorter
  */
@@ -22,6 +33,7 @@ import type { UsageInfo } from "./usage.js";
 import type { ChatConfigInput, ChatConfigResult, ChatGoal, ChatLength } from "./chat-config.js";
 import type { AccountNotebook, AccountNotebookScope } from "./account-notebooks.js";
 import { NOTEBOOKLM_BASE_URL } from "../config.js";
+import { reportProgress } from "../utils/request-context.js";
 
 const RPC_USAGE = "EylDcb";
 const RPC_NOTEBOOK = "rLM1Ne";
@@ -166,6 +178,239 @@ export async function listAccountNotebooksRpc(
 }
 
 // ---------------------------------------------------------------------------
+// Notebook lifecycle (create / rename / delete on Google's side)
+
+const RPC_CREATE_NOTEBOOK = "CCqFvf";
+const RPC_DELETE_NOTEBOOK = "WWINqb";
+const RPC_PIN_NOTEBOOK = "LQhfEb";
+const CREATE_SETTINGS = [1, null, null, null, null, null, null, null, null, null, [1]];
+
+/** Create an empty notebook in the signed-in account; returns its UUID. */
+export async function createNotebookRpc(page: Page, title: string): Promise<string> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_CREATE_NOTEBOOK,
+    [title, null, null, [2], CREATE_SETTINGS],
+    "/"
+  );
+  const id = at(res, 2);
+  if (typeof id !== "string" || !id) {
+    throw new RpcError("notebook create returned no id", RPC_CREATE_NOTEBOOK);
+  }
+  return id.toLowerCase();
+}
+
+/** Rename a notebook; returns the title NotebookLM stored. */
+export async function renameNotebookRpc(
+  page: Page,
+  notebookId: string,
+  title: string
+): Promise<string> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_UPDATE_NOTEBOOK,
+    [notebookId, [[null, null, null, [null, title]]]],
+    `/notebook/${notebookId}`
+  );
+  const saved = at(res, 0);
+  if (saved !== title) {
+    throw new Error(`Rename was not applied (asked "${title}", got "${String(saved)}").`);
+  }
+  return saved;
+}
+
+/** Pin a notebook to the top of the homepage (or unpin it); returns the stored state. */
+export async function pinNotebookRpc(
+  page: Page,
+  notebookId: string,
+  pinned: boolean
+): Promise<boolean> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_PIN_NOTEBOOK,
+    [USAGE_HEADER, notebookId, [null, [pinned ? 1 : 0]], [["notebook_lm_state.is_pinned"]]],
+    "/"
+  );
+  const saved = at(res, 0, 1, 0);
+  if (saved !== pinned) {
+    throw new Error(`Pin state was not applied (asked ${pinned}, got ${String(saved)}).`);
+  }
+  return pinned;
+}
+
+/**
+ * Permanently delete a notebook, verified against the account's notebook
+ * list (the RPC replies `[]` whether or not anything was deleted).
+ */
+export async function deleteNotebookRpc(page: Page, notebookId: string): Promise<void> {
+  await callRpc(page, RPC_DELETE_NOTEBOOK, [[notebookId], [2]], "/");
+  const left = await listAccountNotebooksRpc(page, ["mine", "shared"]);
+  if (left.some((nb) => nb.uuid === notebookId.toLowerCase())) {
+    throw new Error(`Notebook ${notebookId} is still listed after the delete call.`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Collections (homepage "Collections": named groups of notebooks)
+
+const RPC_LIST_COLLECTIONS = "I3xc3c";
+const RPC_CREATE_COLLECTION = "agX4Bc";
+const RPC_EDIT_COLLECTION = "le8sX";
+const RPC_DELETE_COLLECTION = "GyzE7e";
+/** Scope code for notebook collections in the label RPCs. */
+const COLLECTION_SCOPE = 3;
+
+export interface Collection {
+  id: string;
+  name: string;
+  /** NotebookLM UUIDs of the notebooks in it. */
+  notebookIds: string[];
+  emoji: string | null;
+}
+
+/** `[name, [notebookId…] | null, id, emoji]` → Collection. */
+function parseCollections(list: unknown): Collection[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((c): c is unknown[] => Array.isArray(c) && typeof c[2] === "string")
+    .map((c) => ({
+      id: c[2] as string,
+      name: typeof c[0] === "string" ? c[0] : "",
+      notebookIds: Array.isArray(c[1])
+        ? c[1].filter((n): n is string => typeof n === "string")
+        : [],
+      emoji: typeof c[3] === "string" && c[3] ? c[3] : null,
+    }));
+}
+
+/** All collections of the account (`[]` when there are none). */
+export async function listCollectionsRpc(page: Page): Promise<Collection[]> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_LIST_COLLECTIONS,
+    [USAGE_HEADER, null, COLLECTION_SCOPE],
+    "/"
+  );
+  return parseCollections(at(res, 1));
+}
+
+/** Create a collection (optionally with notebooks); returns it. */
+export async function createCollectionRpc(
+  page: Page,
+  name: string,
+  notebookIds: string[] = []
+): Promise<Collection> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_CREATE_COLLECTION,
+    [USAGE_HEADER, null, null, null, null, [[name], null, notebookIds], COLLECTION_SCOPE],
+    "/"
+  );
+  const created = parseCollections(at(res, 2)).find((c) => c.name === name);
+  if (!created) throw new RpcError("collection create returned no id", RPC_CREATE_COLLECTION);
+  return created;
+}
+
+/**
+ * Rename a collection and/or add and remove notebooks — one notebook per
+ * call, as the "Add to collection" dialog does — then read it back.
+ */
+export async function editCollectionRpc(
+  page: Page,
+  collectionId: string,
+  change: { name?: string; add?: string[]; remove?: string[] }
+): Promise<Collection> {
+  const edit = (payload: unknown[]) =>
+    callRpc(
+      page,
+      RPC_EDIT_COLLECTION,
+      [USAGE_HEADER, null, collectionId, payload, COLLECTION_SCOPE],
+      "/"
+    );
+  if (change.name !== undefined) await edit([[], [[change.name]]]);
+  for (const id of change.add ?? []) await edit([[null, null, null, [[id]]], []]);
+  for (const id of change.remove ?? []) await edit([[null, null, null, null, [[id]]], []]);
+
+  const now = (await listCollectionsRpc(page)).find((c) => c.id === collectionId);
+  if (!now) throw new Error(`Collection ${collectionId} not found after the edit.`);
+  const missing = (change.add ?? []).filter((id) => !now.notebookIds.includes(id));
+  const kept = (change.remove ?? []).filter((id) => now.notebookIds.includes(id));
+  if ((change.name !== undefined && now.name !== change.name) || missing.length || kept.length) {
+    throw new Error(`The collection change was not fully applied: ${JSON.stringify(now)}`);
+  }
+  return now;
+}
+
+/** Delete a collection; its notebooks are not touched. */
+export async function deleteCollectionRpc(page: Page, collectionId: string): Promise<void> {
+  await callRpc(
+    page,
+    RPC_DELETE_COLLECTION,
+    [USAGE_HEADER, null, [collectionId], COLLECTION_SCOPE],
+    "/"
+  );
+  if ((await listCollectionsRpc(page)).some((c) => c.id === collectionId)) {
+    throw new Error(`Collection ${collectionId} is still listed after the delete call.`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sharing (notebook "Share" dialog)
+
+const RPC_SHARE_STATUS = "JFMDGd";
+const RPC_SHARE = "QDyure";
+
+export interface ShareStatus {
+  /** "Anyone with the link" can view. */
+  public: boolean;
+  people: Array<{ email: string; name: string | null; role: "owner" | "editor" | "viewer" }>;
+}
+
+const SHARE_ROLES: Record<number, ShareStatus["people"][number]["role"]> = {
+  1: "owner",
+  2: "editor",
+  3: "viewer",
+};
+
+/** Who can open the notebook: link access and people (`[[person…], [isPublic]?, …]`). */
+export async function getShareStatusRpc(page: Page, notebookId: string): Promise<ShareStatus> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_SHARE_STATUS,
+    [notebookId, [2]],
+    `/notebook/${notebookId}`
+  );
+  if (!Array.isArray(res)) throw new RpcError("unexpected share status", RPC_SHARE_STATUS);
+  const people = ((at(res, 0) as unknown[]) ?? [])
+    .filter((p): p is unknown[] => Array.isArray(p) && typeof p[0] === "string")
+    .map((p) => ({
+      email: p[0] as string,
+      name: typeof at(p, 3, 0) === "string" ? (at(p, 3, 0) as string) : null,
+      role: SHARE_ROLES[Number(p[1])] ?? "viewer",
+    }));
+  return { public: at(res, 1, 0) === true, people };
+}
+
+/** Turn "anyone with the link can view" on or off; verified by reading it back. */
+export async function setPublicLinkRpc(
+  page: Page,
+  notebookId: string,
+  isPublic: boolean
+): Promise<ShareStatus> {
+  await callRpc(
+    page,
+    RPC_SHARE,
+    [[[notebookId, null, [isPublic ? 1 : 0], [0, ""]]], 1, null, [2]],
+    `/notebook/${notebookId}`
+  );
+  const now = await getShareStatusRpc(page, notebookId);
+  if (now.public !== isPublic) {
+    throw new Error(`Link sharing was not applied (asked public=${isPublic}).`);
+  }
+  return now;
+}
+
+// ---------------------------------------------------------------------------
 // Sources
 
 const RPC_ADD_SOURCE = "izAoDd";
@@ -194,9 +439,23 @@ async function listRawSources(page: Page, notebookId: string): Promise<RawSource
     [notebookId, null, [2], null, 0],
     `/notebook/${notebookId}`
   );
+  return notebookSourceList(res).filter(
+    (s): s is RawSource => Array.isArray(s) && typeof at(s, 0, 0) === "string"
+  );
+}
+
+/**
+ * The raw source list of an rLM1Ne reply. A notebook without sources has
+ * `null` in that slot — that is an empty list, not a protocol change.
+ */
+export function notebookSourceList(res: unknown): unknown[] {
+  if (typeof at(res, 0, 2) !== "string") {
+    throw new RpcError("unexpected notebook response", RPC_NOTEBOOK);
+  }
   const list = at(res, 0, 1);
+  if (list === null || list === undefined) return [];
   if (!Array.isArray(list)) throw new RpcError("unexpected notebook response", RPC_NOTEBOOK);
-  return list.filter((s): s is RawSource => Array.isArray(s) && typeof at(s, 0, 0) === "string");
+  return list;
 }
 
 const sourceId = (s: RawSource) => at(s, 0, 0) as string;
@@ -212,7 +471,9 @@ export async function addSourcesRpc(
   page: Page,
   notebookId: string,
   input: { type: "text" | "url" | "youtube"; content: string; title?: string },
-  waitMs = 90_000
+  // Below MCP clients' common 60 s request timeout; sources still processing
+  // then are returned as `pending` (usable shortly) instead of timing out.
+  waitMs = 40_000
 ): Promise<RpcSourceAddResult> {
   const path = `/notebook/${notebookId}`;
   const before = await listRawSources(page, notebookId);
@@ -294,6 +555,9 @@ export async function addSourcesRpc(
         failed: mine.filter((s) => sourceStatus(s) === SOURCE_FAILED).map(sourceId),
       };
     }
+    void reportProgress(
+      `Processing ${busy.length} of ${ids.length} new source(s) (${Math.round((waitMs - (deadline - Date.now())) / 1000)} s)…`
+    );
     await page.waitForTimeout(2_000);
     current = await listRawSources(page, notebookId);
   }

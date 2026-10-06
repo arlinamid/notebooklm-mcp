@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `create_notebook` — a new, empty notebook in the signed-in account, added
+  to the library and selected (no web UI or share-link needed).
+- `rename_notebook` — renames the notebook in NotebookLM itself; the library
+  name follows.
+- `delete_notebook` — permanently deletes a notebook from the account and
+  drops its library entry. Asks the user through elicitation, otherwise
+  requires `confirm: true`; verified by re-reading the account's notebooks.
+- `pin_notebook` — "Pin to top" / unpin on the homepage.
+- `list_collections` and `manage_collection` — the homepage's collections:
+  create, rename, add / remove notebooks, delete (notebooks are kept; asks
+  the user). Listing reads the collections directly instead of creating a
+  throwaway one.
+- `share_notebook` — read link sharing and the people a notebook is shared
+  with; switch "anyone with the link can view" on (asks the user) or off.
+- `rename_source` and `rename_studio_artifact` — the Rename entries of the
+  source and Studio item menus.
+- `get_studio_artifact` — "View prompt and sources": the prompt, language,
+  report template and sources a Studio output was generated from.
+- Server log file `<data dir>/logs/server.log` (`NOTEBOOKLM_LOG_FILE`), with
+  the process id on each line.
+
+### Fixed
+
+- `add_source` failed on a notebook without sources ("Could not find an input
+  field inside the Add-source overlay", or a client timeout). NotebookLM
+  returns `null` instead of an empty source list for such a notebook, which
+  the RPC path took for a protocol change and fell back to the UI. The same
+  made `list_sources` read the source list from the UI instead of the RPC.
+- The UI fallback picked the "We're giving you more flexibility…"
+  announcement (`<accessibility-promo-dialog>`) as the Add-source dialog: on
+  an empty notebook the auto-opened Add-source modal covers the announcement's
+  close button. An announcement that cannot be closed is now marked and
+  skipped by the dialog selectors, the close falls back to a DOM click, and
+  announcements are swept again right before the dialog is opened.
+- When the RPC path fails and the UI fallback fails too, the `add_source`
+  message now includes the RPC error instead of only logging it.
+- `add_source` waited up to 90 s for NotebookLM to process new sources and
+  hit MCP clients' 60 s request timeout. It now waits up to 40 s with
+  progress notifications; sources still processing are reported as pending.
+
 ## [3.3.0] - 2026-10-06
 
 Source research and vetting, reports from selected sources, and the

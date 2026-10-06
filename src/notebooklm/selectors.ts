@@ -175,12 +175,17 @@ export const Selectors = {
      * Scoped to `mat-dialog-container`: since 2026-09 the page keeps a hidden
      * `xap-emoji-picker` with `role="dialog"` mounted at all times, which a
      * bare `[role="dialog"]` `.first()` would pick up instead of the modal.
-     * Announcement modals are closed beforehand by `dismissPromoDialogs`.
+     * Announcement modals are closed beforehand by `dismissPromoDialogs`;
+     * one it could not close keeps its `data-mcp-promo-dialog` mark and is
+     * skipped here (2026-10: on an empty notebook the auto-opened Add-source
+     * modal stacks above `<accessibility-promo-dialog>`, so the promo's close
+     * button is covered and the promo stays the first dialog in the DOM).
      */
-    overlayPane: 'mat-dialog-container[role="dialog"]',
-    overlayInput: 'mat-dialog-container[role="dialog"] input[type="text"]:not([readonly])',
+    overlayPane: 'mat-dialog-container[role="dialog"]:not([data-mcp-promo-dialog])',
+    overlayInput:
+      'mat-dialog-container[role="dialog"]:not([data-mcp-promo-dialog]) input[type="text"]:not([readonly])',
     overlayTextarea:
-      'mat-dialog-container[role="dialog"] textarea:not(.query-box-textarea):not(.query-box-input)',
+      'mat-dialog-container[role="dialog"]:not([data-mcp-promo-dialog]) textarea:not(.query-box-textarea):not(.query-box-input)',
     /**
      * Source-type buttons in the Add-source overlay (`.source-action-button`
      * since 2026-09, `.drop-zone-icon-button` before). Google ships them
