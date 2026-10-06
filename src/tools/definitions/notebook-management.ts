@@ -12,6 +12,8 @@ export const notebookManagementTools: Tool[] = [
     description:
       "Register a NotebookLM notebook in the local library so it can be " +
       "queried with `ask_question`, ingested into with `add_source`, etc.\n\n" +
+      "For a brand-new notebook use `create_notebook`; for the account's own " +
+      "notebooks `import_account_notebooks` (no link needed).\n\n" +
       "## Required URL\n" +
       "The user must supply a NotebookLM share-link. To produce one:\n" +
       "  1. Open https://notebook.google.com\n" +
@@ -128,6 +130,221 @@ export const notebookManagementTools: Tool[] = [
     },
     annotations: {
       title: "Import notebooks from the Google account",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "create_notebook",
+    description:
+      "Create a new, empty notebook in the signed-in Google account and add it " +
+      "to the local library — no share-link or web UI needed. By default it also " +
+      "becomes the active notebook, so `add_source` / `ask_question` target it.\n\n" +
+      "Call only when the user asks for a new notebook. Next steps: `add_source` " +
+      "(vetted sources), then `update_notebook` to fill in description/topics " +
+      "once the content is known.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Notebook title as shown in NotebookLM." },
+        description: {
+          type: "string",
+          description: "Optional 1–2 sentence library description.",
+        },
+        topics: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional topics for `search_notebooks`.",
+        },
+        use_cases: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: when the notebook should be consulted.",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: 'Optional library tags (default ["created", "own"]).',
+        },
+        select: {
+          type: "boolean",
+          description: "Make it the active notebook. Default true.",
+        },
+      },
+      required: ["title"],
+    },
+    annotations: {
+      title: "Create notebook in the Google account",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "rename_notebook",
+    description:
+      "Rename a notebook in NotebookLM itself (the title in the web app) and " +
+      "update its library name to match. To change only the local library " +
+      "name, use `update_notebook` instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Library notebook id (from `list_notebooks`)." },
+        title: { type: "string", description: "New notebook title." },
+      },
+      required: ["id", "title"],
+    },
+    annotations: {
+      title: "Rename notebook in the Google account",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "delete_notebook",
+    description:
+      "**Permanently delete** a notebook from the Google account — with all its " +
+      "sources, notes and Studio outputs — and remove it from the local library. " +
+      "Cannot be undone. (`remove_notebook` only forgets the library entry.)\n\n" +
+      "The user is asked to approve it directly when the MCP client supports " +
+      "elicitation; otherwise `confirm: true` is required. Name the notebook and " +
+      "get an explicit yes from the user before calling.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Library notebook id (from `list_notebooks`)." },
+        confirm: {
+          type: "boolean",
+          description:
+            "Set true only after the user explicitly confirmed (used when the client " +
+            "cannot show an approval prompt).",
+        },
+      },
+      required: ["id"],
+    },
+    annotations: {
+      title: "Delete notebook from the Google account",
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "pin_notebook",
+    description:
+      'Pin a notebook to the top of the NotebookLM homepage ("Pin to top"), or unpin it ' +
+      "with `pinned: false`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Library notebook id (from `list_notebooks`)." },
+        pinned: { type: "boolean", description: "true = pin (default), false = unpin." },
+      },
+      required: ["id"],
+    },
+    annotations: {
+      title: "Pin notebook on the homepage",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "list_collections",
+    description:
+      "List the account's collections — the homepage's named groups of notebooks — with " +
+      "each notebook's title, NotebookLM `uuid` and library id (null when not in the " +
+      "library; `import_account_notebooks` brings it in).",
+    inputSchema: { type: "object", properties: {} },
+    annotations: {
+      title: "List collections",
+      readOnlyHint: true,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "manage_collection",
+    description:
+      "Create, change or delete a collection (homepage → Collections / a notebook's " +
+      '"Add to collection").\n' +
+      "  • `create`: `name`, optional `add_notebooks`.\n" +
+      "  • `update`: `collection` plus any of `name` (rename), `add_notebooks`, " +
+      "`remove_notebooks`.\n" +
+      "  • `delete`: `collection`. The notebooks in it are kept. Asks the user to approve " +
+      "(elicitation), otherwise needs `confirm: true`.\n" +
+      "Notebooks are given as library ids, notebook URLs or NotebookLM UUIDs; a collection " +
+      "by id or exact name (see `list_collections`).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["create", "update", "delete"] },
+        collection: {
+          type: "string",
+          description: "update/delete: collection id or exact name.",
+        },
+        name: { type: "string", description: "create: the name; update: the new name." },
+        add_notebooks: {
+          type: "array",
+          items: { type: "string" },
+          description: "Notebooks to put in the collection.",
+        },
+        remove_notebooks: {
+          type: "array",
+          items: { type: "string" },
+          description: "update: notebooks to take out of the collection.",
+        },
+        confirm: {
+          type: "boolean",
+          description:
+            "delete only, when the client cannot show an approval prompt: true after the " +
+            "user explicitly confirmed.",
+        },
+      },
+      required: ["action"],
+    },
+    annotations: {
+      title: "Create, change or delete a collection",
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+  },
+  {
+    name: "share_notebook",
+    description:
+      "Who can open a notebook: without `public` it reads the sharing state — whether " +
+      '"anyone with the link" can view, and the people it is shared with (email, name, ' +
+      "role). `public: true` turns link viewing on — the user is asked to approve it " +
+      "(elicitation), otherwise `confirm: true` is required after the user agreed; " +
+      "`public: false` turns it off. Inviting people is not supported (it emails them); " +
+      "use the Share dialog in NotebookLM for that.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Library notebook id (from `list_notebooks`)." },
+        public: {
+          type: "boolean",
+          description: "Omit to read. true = anyone with the link can view; false = restricted.",
+        },
+        confirm: {
+          type: "boolean",
+          description:
+            "public: true only, when the client cannot show an approval prompt: true after " +
+            "the user explicitly agreed.",
+        },
+      },
+      required: ["id"],
+    },
+    annotations: {
+      title: "Notebook link sharing",
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -264,7 +481,8 @@ export const notebookManagementTools: Tool[] = [
     description:
       "Remove a notebook from the local library. **Does NOT delete the " +
       "actual NotebookLM notebook on Google's side** — only the local " +
-      "metadata entry. Active sessions on this notebook are closed.\n\n" +
+      "metadata entry (`delete_notebook` deletes it in the account). Active " +
+      "sessions on this notebook are closed.\n\n" +
       "Confirmation workflow: look up the notebook by id, ask the user " +
       "\"Remove '[name]' from your library?\" — only call after a clear yes.",
     inputSchema: {

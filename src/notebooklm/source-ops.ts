@@ -28,6 +28,7 @@
 
 import type { Page } from "patchright";
 import { callRpc, RpcError } from "./rpc.js";
+import { notebookSourceList } from "./rpc-ops.js";
 
 const RPC_NOTEBOOK = "rLM1Ne";
 const RPC_SOURCE_TEXT = "hizoJc";
@@ -36,6 +37,30 @@ const RPC_FAST_RESEARCH = "Ljjv0c";
 const RPC_DEEP_RESEARCH = "QA9ei";
 const RPC_POLL_RESEARCH = "e3bVqc";
 const RPC_IMPORT_RESEARCH = "LBwxtb";
+const RPC_RENAME_SOURCE = "b7Wfje";
+
+/**
+ * Rename a source (`b7Wfje` ← [null, [id], [[[title]]]] → [[[id], title, …]]);
+ * returns the title NotebookLM stored.
+ */
+export async function renameSourceRpc(
+  page: Page,
+  notebookId: string,
+  sourceId: string,
+  title: string
+): Promise<string> {
+  const res = await callRpc<unknown[]>(
+    page,
+    RPC_RENAME_SOURCE,
+    [null, [sourceId], [[[title]]]],
+    `/notebook/${notebookId}`
+  );
+  const saved = at(res, 0, 1);
+  if (saved !== title) {
+    throw new Error(`Source rename was not applied (asked "${title}", got "${String(saved)}").`);
+  }
+  return saved;
+}
 
 const at = (v: unknown, ...path: number[]): unknown =>
   path.reduce<unknown>((cur, i) => (Array.isArray(cur) ? cur[i] : undefined), v);
@@ -120,9 +145,7 @@ export async function listSourceDetailsRpc(
     [notebookId, null, [2], null, 0],
     `/notebook/${notebookId}`
   );
-  const list = at(res, 0, 1);
-  if (!Array.isArray(list)) throw new RpcError("unexpected notebook response", RPC_NOTEBOOK);
-  return list
+  return notebookSourceList(res)
     .filter((s): s is unknown[] => Array.isArray(s) && typeof at(s, 0, 0) === "string")
     .map(parseSource);
 }

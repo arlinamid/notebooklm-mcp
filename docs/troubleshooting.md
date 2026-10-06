@@ -2,6 +2,12 @@
 
 A symptom → fix matrix for v3.2. Many operations use NotebookLM's data API and fall back to the web UI; the server log says `RPC path failed — using the UI instead` when that happens. For the full env-var inventory, see [`configuration.md`](./configuration.md).
 
+## Where are the logs?
+
+The server writes every log line to `<data dir>/logs/server.log` (Windows: `%LOCALAPPDATA%\notebooklm-mcp\Data\logs\server.log`; set `NOTEBOOKLM_LOG_FILE` to move or disable it). Each line carries the process id: with several clients only the leader instance (`<data dir>/leader.json`) drives the browser, so its lines hold the details — e.g. why an RPC call fell back to the web UI.
+
+Client-side logs show only what the client saw. Claude Code (and the Claude desktop Code tab) keeps them per project under `%LOCALAPPDATA%\claude-cli-nodejs\Cache\<project>\mcp-logs-notebooklm\` — tool calls, durations and errors such as a 60 s `Request timed out`, but not the server's own output.
+
 ## Chrome fails to launch (macOS Tahoe / Windows exit 21)
 
 Symptom: `Failed to launch chrome`, `chrome exited immediately`, `code 21`, `executable doesn't exist`.

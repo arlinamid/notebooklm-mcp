@@ -265,6 +265,9 @@ All 38 tools below are visible under the `full` profile. See [Profiles](#tool-pr
 | `add_source` | Add sources: `url` (web crawl, several URLs per call), `youtube` (transcript), `text` (paste), `file` (`file_paths`: pdf, txt, md, docx, audio, images …). URLs, videos and text go through NotebookLM's data API and the call waits until they are processed; returns source counts and the new `sourceIds`. |
 | `delete_source` | **Permanently** remove a source (by id or title). Asks the user for approval — see [Approvals](#approvals-for-destructive-actions). Success only after NotebookLM acknowledged it. |
 | `delete_studio_artifact` | **Permanently** delete a Studio output or note (by id or title, optional `kind`). Asks the user for approval. |
+| `rename_source` | Rename a source (by id or title). |
+| `rename_studio_artifact` | Rename a Studio output (by id, id prefix or title). |
+| `get_studio_artifact` | "View prompt and sources": the prompt, language, report template and sources (ids + titles) a Studio output was generated from. |
 | `generate_audio` | Generate an Audio Overview. Optional `custom_prompt`, `format` (`deep_dive`/`brief`/`critique`/`debate`), `length`, `sources`, `generate_later`, `wait_for_completion`, `timeout_ms` (default 600 000 ms). |
 | `get_audio_status` | Non-blocking audio state: `ready` / `in_progress` / `not_started`. |
 | `download_audio` | Save the most recent Audio Overview (`.m4a`, original title as file name) to `destination_dir`. |
@@ -317,11 +320,18 @@ NotebookLM meters AI usage (a rolling window that resets every few hours plus a 
 |---|---|
 | `add_notebook` | Add a NotebookLM share-URL to the local library with metadata. If `description` / `topics` are omitted, they are proposed from the source titles (written by the client's model via sampling when supported) and returned as `generated_metadata`. Requires explicit user confirmation. |
 | `import_account_notebooks` | Import the signed-in account's own (and optionally shared) notebooks from the NotebookLM homepage — no share-links needed. Skips ones already in the library; `dry_run` lists them first. |
+| `create_notebook` | Create a new, empty notebook in the Google account, add it to the library and (by default) select it. |
+| `rename_notebook` | Rename a notebook in NotebookLM itself; the library name follows. |
+| `delete_notebook` | **Permanently** delete a notebook from the Google account (sources, notes, Studio outputs) and drop the library entry. Asks the user via elicitation, else needs `confirm: true`. |
+| `pin_notebook` | Pin a notebook to the top of the NotebookLM homepage, or unpin it. |
+| `list_collections` | The account's collections (named groups of notebooks) with their notebooks. |
+| `manage_collection` | Create a collection, rename it, add / remove notebooks, or delete it (notebooks are kept; delete asks the user). |
+| `share_notebook` | Read who can open a notebook, or turn "anyone with the link can view" on (asks the user) or off. |
 | `list_notebooks` | List every notebook in the library with metadata. |
 | `get_notebook` | Fetch one notebook by `id`. |
 | `select_notebook` | Set a notebook as the active default for `ask_question`. |
 | `update_notebook` | Update name, description, topics, content_types, use_cases, tags, or url. |
-| `remove_notebook` | Remove from the local library (does not delete the NotebookLM notebook itself). |
+| `remove_notebook` | Remove from the local library (does not delete the NotebookLM notebook itself — see `delete_notebook`). |
 | `search_notebooks` | Search by name, description, topics, tags. |
 | `get_library_stats` | Counts and usage stats. |
 
@@ -353,7 +363,7 @@ Full per-tool schema and example invocations: [`docs/tools.md`](./docs/tools.md)
 
 ## Approvals for destructive actions
 
-`delete_source` and `delete_studio_artifact` remove data permanently (`re_auth` and `cleanup_data(confirm: true)` similarly ask before deleting the local login/profile data). Before deleting, the server resolves the target and asks the **user** through MCP elicitation — e.g. *"Permanently delete the source "Market report" from this notebook? This cannot be undone."* with a "Yes, delete permanently" checkbox. Only an accepted form with the box ticked deletes; declining, dismissing or leaving the box unticked changes nothing, even if the calling model passed `confirm: true`. Clients without elicitation support fall back to requiring `confirm: true`, which the model should set only after the user approved that specific deletion. A deletion counts as done only after NotebookLM acknowledged the request and the entry disappeared.
+`delete_source`, `delete_studio_artifact`, `delete_notebook` and `manage_collection` (`delete`) remove data permanently, and `share_notebook` (`public: true`) exposes a notebook to anyone with its link — all of them ask first (`re_auth` and `cleanup_data(confirm: true)` similarly ask before deleting the local login/profile data). Before deleting, the server resolves the target and asks the **user** through MCP elicitation — e.g. *"Permanently delete the source "Market report" from this notebook? This cannot be undone."* with a "Yes, delete permanently" checkbox. Only an accepted form with the box ticked deletes; declining, dismissing or leaving the box unticked changes nothing, even if the calling model passed `confirm: true`. Clients without elicitation support fall back to requiring `confirm: true`, which the model should set only after the user approved that specific deletion. A deletion counts as done only after NotebookLM acknowledged the request and the entry disappeared.
 
 ---
 
@@ -383,7 +393,7 @@ Profiles trim the tool list to keep host-agent context budgets in check.
 | Profile | Tools |
 |---|---|
 | `minimal` | `ask_question`, `get_health`, `list_notebooks`, `select_notebook`, `get_notebook` |
-| `standard` | `minimal` + `setup_auth`, `list_sessions`, `add_notebook`, `import_account_notebooks`, `update_notebook`, `search_notebooks` |
+| `standard` | `minimal` + `setup_auth`, `list_sessions`, `add_notebook`, `import_account_notebooks`, `create_notebook`, `update_notebook`, `search_notebooks` |
 | `full` (default) | every tool registered above |
 
 Set the profile persistently:
@@ -500,6 +510,7 @@ All configuration is via environment variables and tool parameters. There is no 
 | `NOTEBOOKLM_SUBSCRIPTION_POLL_MS` | `60000` | Poll interval for subscribed notebook resources (minimum 15000). |
 | `NOTEBOOKLM_USE_RPC` | `true` | `false` = use the NotebookLM web UI (typing, dialogs, menus) instead of its data API for operations that have both (asking, usage, chat settings, notebook import, adding sources, Studio generation). A kill switch should Google change the protocol. |
 | `NOTEBOOKLM_SINGLE_BROWSER` | `true` | `false` = every instance runs its own browser instead of forwarding to the leader instance (see [Several clients on one account](#several-clients-on-one-account)). |
+| `NOTEBOOKLM_LOG_FILE` | `<data dir>/logs/server.log` | Every log line is also appended here (with the process id; rotated at 5 MB), since MCP clients rarely keep a server's stderr. A path to move it, `false` to turn it off. |
 | `NOTEBOOKLM_NO_SANDBOX` | _(auto)_ | `true` / `false` forces Chrome's `--no-sandbox`. Auto: on under WSL and for root on Linux, off elsewhere. |
 
 ---

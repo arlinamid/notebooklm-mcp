@@ -42,18 +42,22 @@ export function notebookUuidFromUrl(url: string): string | null {
   return url.match(UUID_RE)?.[1]?.toLowerCase() ?? null;
 }
 
+/** Navigate `page` to the homepage; throws when the account is signed out. */
+export async function openHomepage(page: Page): Promise<void> {
+  await page.goto(NOTEBOOKLM_BASE_URL, { waitUntil: "domcontentloaded" });
+  if (/accounts\.google\.com|\/trynow/.test(page.url())) {
+    throw new Error(
+      "Not signed in to NotebookLM (homepage redirected to the sign-in page). Run setup_auth."
+    );
+  }
+}
+
 /** Navigate `page` to the homepage and list the account's notebooks. */
 export async function listAccountNotebooks(
   page: Page,
   scopes: AccountNotebookScope[]
 ): Promise<AccountNotebook[]> {
-  await page.goto(NOTEBOOKLM_BASE_URL, { waitUntil: "domcontentloaded" });
-  const landed = page.url();
-  if (/accounts\.google\.com|\/trynow/.test(landed)) {
-    throw new Error(
-      "Not signed in to NotebookLM (homepage redirected to the sign-in page). Run setup_auth."
-    );
-  }
+  await openHomepage(page);
   // One RPC returns every notebook with owner/created data; the homepage
   // filters below are the fallback for when Google rotates the RPC id.
   try {

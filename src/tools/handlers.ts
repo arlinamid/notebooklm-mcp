@@ -23,7 +23,32 @@ import type {
 import type { ResearchCorpus, ResearchMode } from "../notebooklm/source-ops.js";
 import { vagueQueryReason, type ImportSelection } from "../notebooklm/research-policy.js";
 import type { StudioDownloadFormat } from "../notebooklm/studio-download.js";
-import { getOutputLanguageRpc, setOutputLanguageRpc } from "../notebooklm/rpc-ops.js";
+import {
+  createCollectionRpc,
+  createNotebookRpc,
+  deleteCollectionRpc,
+  deleteNotebookRpc,
+  editCollectionRpc,
+  getOutputLanguageRpc,
+  getShareStatusRpc,
+  listAccountNotebooksRpc,
+  listCollectionsRpc,
+  pinNotebookRpc,
+  renameNotebookRpc,
+  setOutputLanguageRpc,
+  setPublicLinkRpc,
+  type Collection,
+  type ShareStatus,
+} from "../notebooklm/rpc-ops.js";
+import type { Page } from "patchright";
+
+/** A collection as list_collections / manage_collection return it. */
+export interface CollectionView {
+  id: string;
+  name: string;
+  emoji: string | null;
+  notebooks: Array<{ uuid: string; title: string | null; library_id: string | null }>;
+}
 import { languageName, resolveLanguage } from "../notebooklm/language.js";
 import {
   STUDIO_TYPES,
@@ -39,6 +64,7 @@ import type { DeleteResult, DeleteTarget } from "../notebooklm/deletion.js";
 import {
   listAccountNotebooks,
   notebookUuidFromUrl,
+  openHomepage,
   type AccountNotebook,
   type AccountNotebookScope,
 } from "../notebooklm/account-notebooks.js";
@@ -1070,6 +1096,321 @@ export class ToolHandlers {
   }
 
   /**
+   * Handle create_notebook — a new, empty notebook in the Google account,
+   * registered in the library (and selected unless `select: false`).
+   */
+  async handleCreateNotebook(args: {
+    title: string;
+    description?: string;
+    topics?: string[];
+    use_cases?: string[];
+    tags?: string[];
+    select?: boolean;
+  }): Promise<ToolResult<{ notebook: NotebookEntry; uuid: string; selected: boolean }>> {
+    const title = args.title?.trim();
+    log.info(`🔧 [TOOL] create_notebook called ("${title}")`);
+    if (!title) return { success: false, error: "`title` is required." };
+    try {
+      const uuid = await this.sessionManager.withScratchPage(async (page) => {
+        await openHomepage(page);
+        return createNotebookRpc(page, title);
+      });
+      const [entry] = this.library.addNotebooks([
+        {
+          url: new URL(`/notebook/${uuid}`, NOTEBOOKLM_BASE_URL).toString(),
+          name: title,
+          description:
+            args.description?.trim() || "New notebook created from this server (no sources yet).",
+          topics: args.topics ?? [],
+          content_types: [],
+          use_cases: args.use_cases ?? [],
+          tags: args.tags ?? ["created", "own"],
+        },
+      ]);
+      const select = args.select ?? true;
+      const notebook = select ? this.library.selectNotebook(entry.id) : entry;
+      log.success(`✅ [TOOL] create_notebook: ${uuid} → library id ${entry.id}`);
+      return { success: true, data: { notebook, uuid, selected: select } };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      log.error(`❌ [TOOL] create_notebook failed: ${msg}`);
+      return { success: false, error: msg };
+    }
+  }
+
+  /**
+   * Handle rename_notebook — renames the notebook on Google's side and keeps
+   * the library name in step.
+   */
+  async handleRenameNotebook(args: {
+    id: string;
+    title: string;
+  }): Promise<ToolResult<{ notebook: NotebookEntry; previous_title: string }>> {
+    const title = args.title?.trim();
+    log.info(`🔧 [TOOL] rename_notebook called (${args.id} → "${title}")`);
+    if (!title) return { success: false, error: "`title` is required." };
+    try {
+      const { entry, uuid } = this.libraryEntryWithUuid(args.id);
+      await this.sessionManager.withScratchPage(async (page) => {
+        await openHomepage(page);
+        await renameNotebookRpc(page, uuid, title);
+      });
+      const notebook = this.library.updateNotebook({ id: entry.id, name: title });
+      log.success(`✅ [TOOL] rename_notebook: ${entry.id} → "${title}"`);
+      return { success: true, data: { notebook, previous_title: entry.name } };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      log.error(`❌ [TOOL] rename_notebook failed: ${msg}`);
+      return { success: false, error: msg };
+    }
+  }
+
+  /**
+   * Handle delete_notebook — permanently deletes the notebook on Google's
+   * side (sources, notes, Studio outputs), then drops the library entry.
+   * Asks the user via elicitation when supported, else needs `confirm: true`.
+   */
+  async handleDeleteNotebook(
+    args: { id: string; confirm?: boolean },
+    approve?: ApprovalFn
+  ): Promise<ToolResult<{ deleted: true; name: string; uuid: string; closed_sessions: number }>> {
+    log.info(`🔧 [TOOL] delete_notebook called (${args.id})`);
+    try {
+      const { entry, uuid } = this.libraryEntryWithUuid(args.id);
+      const decision = approve
+        ? await approve(
+            `Permanently delete the notebook "${entry.name}" from your Google account, ` +
+              "with all its sources, notes and Studio outputs? This cannot be undone.",
+            "Delete notebook"
+          )
+        : "unsupported";
+      if (decision === "unsupported" && args.confirm !== true) {
+        throw new Error(
+          `Deleting the notebook "${entry.name}" is permanent and requires \`confirm: true\` ` +
+            "(this MCP client cannot show an approval prompt). Ask the user first."
+        );
+      }
+      if (decision !== "unsupported" && decision !== "approved") {
+        throw new Error(`Not deleted — the user ${decision} the deletion of "${entry.name}".`);
+      }
+
+      const closedSessions = await this.sessionManager.closeSessionsForNotebook(entry.url);
+      await this.sessionManager.withScratchPage(async (page) => {
+        await openHomepage(page);
+        await deleteNotebookRpc(page, uuid);
+      });
+      this.library.removeNotebook(entry.id);
+      log.success(`✅ [TOOL] delete_notebook: "${entry.name}" (${uuid}) deleted`);
+      return {
+        success: true,
+        data: { deleted: true, name: entry.name, uuid, closed_sessions: closedSessions },
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      log.error(`❌ [TOOL] delete_notebook failed: ${msg}`);
+      return { success: false, error: msg };
+    }
+  }
+
+  /** Handle pin_notebook — homepage card menu → "Pin to top" / "Unpin". */
+  async handlePinNotebook(args: {
+    id: string;
+    pinned?: boolean;
+  }): Promise<ToolResult<{ id: string; name: string; pinned: boolean }>> {
+    const pinned = args.pinned ?? true;
+    log.info(`🔧 [TOOL] pin_notebook called (${args.id}, pinned=${pinned})`);
+    try {
+      const { entry, uuid } = this.libraryEntryWithUuid(args.id);
+      await this.onHomepage((page) => pinNotebookRpc(page, uuid, pinned));
+      return { success: true, data: { id: entry.id, name: entry.name, pinned } };
+    } catch (error) {
+      return this.toolError("pin_notebook", error);
+    }
+  }
+
+  /** Handle list_collections — the homepage's "Collections" tab. */
+  async handleListCollections(): Promise<ToolResult<{ collections: CollectionView[] }>> {
+    log.info(`🔧 [TOOL] list_collections called`);
+    try {
+      const collections = await this.onHomepage(async (page) =>
+        this.viewCollections(page, await listCollectionsRpc(page))
+      );
+      return { success: true, data: { collections } };
+    } catch (error) {
+      return this.toolError("list_collections", error);
+    }
+  }
+
+  /**
+   * Handle manage_collection — create, rename / add / remove notebooks, or
+   * delete a collection (its notebooks stay).
+   */
+  async handleManageCollection(
+    args: {
+      action: "create" | "update" | "delete";
+      collection?: string;
+      name?: string;
+      add_notebooks?: string[];
+      remove_notebooks?: string[];
+      confirm?: boolean;
+    },
+    approve?: ApprovalFn
+  ): Promise<ToolResult<{ collection: CollectionView | null; deleted?: boolean }>> {
+    log.info(`🔧 [TOOL] manage_collection called (${args.action})`);
+    try {
+      const add = (args.add_notebooks ?? []).map((n) => this.notebookUuid(n));
+      const remove = (args.remove_notebooks ?? []).map((n) => this.notebookUuid(n));
+      const name = args.name?.trim();
+      return await this.onHomepage(async (page) => {
+        if (args.action === "create") {
+          if (!name) throw new Error("`name` is required to create a collection.");
+          const created = await createCollectionRpc(page, name, add);
+          const [view] = await this.viewCollections(page, [created]);
+          return { success: true, data: { collection: view } };
+        }
+        const all = await listCollectionsRpc(page);
+        const ref = args.collection?.trim().toLowerCase() ?? "";
+        const target =
+          all.find((c) => c.id === ref) ??
+          all.find((c) => c.name.toLowerCase() === ref) ??
+          (() => {
+            throw new Error(
+              `No collection "${args.collection ?? ""}". Collections: ` +
+                (all.map((c) => `"${c.name}" (${c.id})`).join(", ") || "none")
+            );
+          })();
+        if (args.action === "delete") {
+          const decision = approve
+            ? await approve(
+                `Delete the collection "${target.name}"? Its ${target.notebookIds.length} ` +
+                  "notebook(s) are kept.",
+                "Delete collection"
+              )
+            : "unsupported";
+          if (decision === "unsupported" && args.confirm !== true) {
+            throw new Error(
+              `Deleting the collection "${target.name}" requires \`confirm: true\` ` +
+                "(this MCP client cannot show an approval prompt). Ask the user first."
+            );
+          }
+          if (decision !== "unsupported" && decision !== "approved") {
+            throw new Error(`Not deleted — the user ${decision} it.`);
+          }
+          await deleteCollectionRpc(page, target.id);
+          return { success: true, data: { collection: null, deleted: true } };
+        }
+        if (!name && add.length === 0 && remove.length === 0) {
+          throw new Error("Nothing to change: pass `name`, `add_notebooks` or `remove_notebooks`.");
+        }
+        const updated = await editCollectionRpc(page, target.id, { name, add, remove });
+        const [view] = await this.viewCollections(page, [updated]);
+        return { success: true, data: { collection: view } };
+      });
+    } catch (error) {
+      return this.toolError("manage_collection", error);
+    }
+  }
+
+  /**
+   * Handle share_notebook — read who can open the notebook, or switch
+   * "anyone with the link can view" on/off. Making it public asks the user.
+   */
+  async handleShareNotebook(
+    args: { id: string; public?: boolean; confirm?: boolean },
+    approve?: ApprovalFn
+  ): Promise<
+    ToolResult<ShareStatus & { id: string; name: string; url: string; changed: boolean }>
+  > {
+    log.info(`🔧 [TOOL] share_notebook called (${args.id}, public=${args.public ?? "read"})`);
+    try {
+      const { entry, uuid } = this.libraryEntryWithUuid(args.id);
+      if (args.public === true) {
+        const decision = approve
+          ? await approve(
+              `Make "${entry.name}" viewable by anyone with the link? Its sources, notes ` +
+                "and Studio outputs become readable to whoever gets the URL.",
+              "Make public"
+            )
+          : "unsupported";
+        if (decision === "unsupported" && args.confirm !== true) {
+          throw new Error(
+            `Making "${entry.name}" public requires \`confirm: true\` (this MCP client cannot ` +
+              "show an approval prompt). Ask the user first."
+          );
+        }
+        if (decision !== "unsupported" && decision !== "approved") {
+          throw new Error(`Not shared — the user ${decision} it.`);
+        }
+      }
+      const result = await this.onHomepage(async (page) => {
+        const before = await getShareStatusRpc(page, uuid);
+        const now =
+          args.public === undefined || args.public === before.public
+            ? before
+            : await setPublicLinkRpc(page, uuid, args.public);
+        return { ...now, changed: now.public !== before.public };
+      });
+      return {
+        success: true,
+        data: { id: entry.id, name: entry.name, url: entry.url, ...result },
+      };
+    } catch (error) {
+      return this.toolError("share_notebook", error);
+    }
+  }
+
+  /** Run `fn` on a scratch page opened at the NotebookLM homepage. */
+  private onHomepage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+    return this.sessionManager.withScratchPage(async (page) => {
+      await openHomepage(page);
+      return fn(page);
+    });
+  }
+
+  /** NotebookLM UUID for a library id, notebook URL or bare UUID. */
+  private notebookUuid(ref: string): string {
+    const entry = this.library.getNotebook(ref);
+    const uuid = notebookUuidFromUrl(entry?.url ?? ref) ?? notebookUuidFromUrl(`/notebook/${ref}`);
+    if (!uuid) throw new Error(`Unknown notebook "${ref}" (use a library id, URL or UUID).`);
+    return uuid;
+  }
+
+  /** Collections with each notebook's title and library id. */
+  private async viewCollections(page: Page, list: Collection[]): Promise<CollectionView[]> {
+    const titles = new Map(
+      (await listAccountNotebooksRpc(page, ["mine", "shared"]).catch(() => [])).map((n) => [
+        n.uuid,
+        n.title,
+      ])
+    );
+    return list.map((c) => ({
+      id: c.id,
+      name: c.name,
+      emoji: c.emoji,
+      notebooks: c.notebookIds.map((uuid) => ({
+        uuid,
+        title: titles.get(uuid) ?? null,
+        library_id: this.library.findByNotebookUuid(uuid)?.id ?? null,
+      })),
+    }));
+  }
+
+  private toolError(tool: string, error: unknown): { success: false; error: string } {
+    const msg = error instanceof Error ? error.message : String(error);
+    log.error(`❌ [TOOL] ${tool} failed: ${msg}`);
+    return { success: false, error: msg };
+  }
+
+  /** A library entry and the NotebookLM UUID in its URL. */
+  private libraryEntryWithUuid(id: string): { entry: NotebookEntry; uuid: string } {
+    const entry = this.library.getNotebook(id);
+    if (!entry) throw new Error(`Notebook not found in the library: ${id} (see list_notebooks).`);
+    const uuid = notebookUuidFromUrl(entry.url);
+    if (!uuid) throw new Error(`The library entry "${id}" has no NotebookLM notebook URL.`);
+    return { entry, uuid };
+  }
+
+  /**
    * Handle search_notebooks tool
    */
   async handleSearchNotebooks(args: {
@@ -1529,6 +1870,37 @@ export class ToolHandlers {
       await this.requireDeleteApproval(target, args.confirm, approve);
       return { result: await s.deleteSource(target.id) };
     });
+  }
+
+  /** Handle rename_source — the sidebar's "Rename source". */
+  async handleRenameSource(
+    args: NotebookTargetArgs & { source: string; title: string }
+  ): Promise<ToolResult<{ id: string; from: string; to: string }>> {
+    return this.withNotebookSession("rename_source", args, (s) => {
+      const title = args.title?.trim();
+      if (!title) throw new Error("`title` is required.");
+      return s.renameSource(args.source, title);
+    });
+  }
+
+  /** Handle rename_studio_artifact — the Studio item menu's "Rename". */
+  async handleRenameStudioArtifact(
+    args: NotebookTargetArgs & { artifact: string; title: string }
+  ): Promise<ToolResult<{ id: string; type: string; from: string; to: string }>> {
+    return this.withNotebookSession("rename_studio_artifact", args, (s) => {
+      const title = args.title?.trim();
+      if (!title) throw new Error("`title` is required.");
+      return s.renameStudioItem(args.artifact, title);
+    });
+  }
+
+  /** Handle get_studio_artifact — the Studio item menu's "View prompt and sources". */
+  async handleGetStudioArtifact(
+    args: NotebookTargetArgs & { artifact: string }
+  ): Promise<ToolResult<Awaited<ReturnType<BrowserSession["studioItemDetails"]>>>> {
+    return this.withNotebookSession("get_studio_artifact", args, (s) =>
+      s.studioItemDetails(args.artifact)
+    );
   }
 
   /**

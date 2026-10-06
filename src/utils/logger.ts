@@ -3,6 +3,9 @@
  * Similar to Python's rich.console
  */
 
+import fs from "fs";
+import path from "path";
+
 export type LogLevel = "info" | "success" | "warning" | "error" | "debug" | "dim";
 
 interface LogStyle {
@@ -20,6 +23,8 @@ const STYLES: Record<LogLevel, LogStyle> = {
 };
 
 const RESET = "\x1b[0m";
+/** Rotate the log file (to `<file>.1`) once it grows past this size. */
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
 
 /**
  * Logger class for consistent console output
@@ -33,9 +38,41 @@ export class Logger {
     this.enabled = enabled;
   }
 
+  /** Plain-text log file every line is appended to (null = stderr only). */
+  private file: string | null = null;
+  private writesSinceCheck = 0;
+
   /** Forward every log line to `sink` in addition to stderr. */
   setSink(sink: ((level: LogLevel, message: string) => void) | undefined): void {
     this.sink = sink;
+  }
+
+  /**
+   * Also append every line to `file`. MCP clients rarely keep a server's
+   * stderr, and with several instances only the leader does the work — the
+   * file is shared, so each line carries the process id.
+   */
+  setFile(file: string | null): void {
+    if (file) fs.mkdirSync(path.dirname(file), { recursive: true });
+    this.file = file;
+  }
+
+  private writeFile(level: LogLevel, message: string): void {
+    if (!this.file) return;
+    try {
+      if (++this.writesSinceCheck >= 200) {
+        this.writesSinceCheck = 0;
+        if (fs.statSync(this.file).size > MAX_LOG_BYTES) {
+          fs.renameSync(this.file, `${this.file}.1`);
+        }
+      }
+      fs.appendFileSync(
+        this.file,
+        `${new Date().toISOString()} [${process.pid}] ${level.toUpperCase().padEnd(7)} ${message}\n`
+      );
+    } catch {
+      /* the file log is best-effort */
+    }
   }
 
   /**
@@ -50,6 +87,7 @@ export class Logger {
 
     // Use stderr for logs to keep stdout clean for MCP JSON-RPC
     console.error(formattedMessage);
+    this.writeFile(level, message);
     if (this.sink) {
       try {
         this.sink(level, message);

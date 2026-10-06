@@ -539,10 +539,91 @@ export const suggestReportsTool: Tool = {
   },
 };
 
+export const renameSourceTool: Tool = {
+  name: "rename_source",
+  description:
+    'Rename a source in the notebook (sidebar → More → "Rename source"). Identify it by ' +
+    "id (preferred, see `list_sources`), exact title or unique title substring. Returns " +
+    "the old and new title.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      source: { type: "string", description: "Source id, exact title, or unique title substring." },
+      title: { type: "string", description: "New source title." },
+      ...showBrowser,
+      ...sharedNotebookTargeting,
+    },
+    required: ["source", "title"],
+  },
+  annotations: {
+    title: "Rename source",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+};
+
+export const renameStudioArtifactTool: Tool = {
+  name: "rename_studio_artifact",
+  description:
+    "Rename a Studio output — audio, video, report, quiz, flashcards, mind map, " +
+    'infographic, slide deck or data table (item menu → "Rename"). Identify it by id ' +
+    "(preferred, from `list_studio_artifacts`; a unique prefix is enough), exact title or " +
+    "unique title substring. Notes are not Studio outputs and are not covered.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      artifact: { type: "string", description: "Studio item id (or prefix), or title." },
+      title: { type: "string", description: "New title." },
+      ...showBrowser,
+      ...sharedNotebookTargeting,
+    },
+    required: ["artifact", "title"],
+  },
+  annotations: {
+    title: "Rename Studio output",
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+};
+
+export const getStudioArtifactTool: Tool = {
+  name: "get_studio_artifact",
+  description:
+    'What a Studio output was made from — NotebookLM\'s "View prompt and sources": the ' +
+    "prompt (instructions) it was generated with, its language, the report template, and " +
+    "the sources it used (ids and titles; a deleted source shows `title: null`). Also type, " +
+    "status and creation time. Use it to check an output's grounding before relying on it, " +
+    "or to regenerate a similar one with `generate_studio_artifact` (same `sources` and an " +
+    "adapted prompt). Read-only.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      artifact: { type: "string", description: "Studio item id (or prefix), or title." },
+      ...showBrowser,
+      ...sharedNotebookTargeting,
+    },
+    required: ["artifact"],
+  },
+  annotations: {
+    title: "View Studio output prompt and sources",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+};
+
 export const studioTools: Tool[] = [
   suggestReportsTool,
   deleteSourceTool,
+  renameSourceTool,
   deleteStudioArtifactTool,
+  renameStudioArtifactTool,
+  getStudioArtifactTool,
   listSourcesTool,
   saveAnswerAsNoteTool,
   convertNoteToSourceTool,

@@ -103,7 +103,9 @@ sources, ingest sources, generate Audio Overviews).
    library (the user must provide the URL — see add_notebook for the link
    workflow). Optionally \`select_notebook\` to make it the default.
    Or \`import_account_notebooks\` to bring in the signed-in account's own
-   notebooks without share links (dry-run first).
+   notebooks without share links (dry-run first), or \`create_notebook\`
+   for a new, empty one. \`rename_notebook\` / \`delete_notebook\` change
+   the notebook in the Google account itself (delete is permanent).
 3. \`ask_question\` — start asking. Save the returned \`session_id\` and
    reuse it for follow-up questions to keep context.
 
@@ -857,6 +859,67 @@ class NotebookLMMCPServer {
             result = await this.toolHandlers.handleRemoveNotebook(args as { id: string });
             break;
 
+          case "create_notebook":
+            result = await this.toolHandlers.handleCreateNotebook(
+              args as unknown as Parameters<ToolHandlers["handleCreateNotebook"]>[0]
+            );
+            break;
+
+          case "rename_notebook":
+            result = await this.toolHandlers.handleRenameNotebook(
+              args as unknown as Parameters<ToolHandlers["handleRenameNotebook"]>[0]
+            );
+            break;
+
+          case "delete_notebook":
+            result = await this.toolHandlers.handleDeleteNotebook(
+              args as unknown as Parameters<ToolHandlers["handleDeleteNotebook"]>[0],
+              this.askUserApproval
+            );
+            break;
+
+          case "pin_notebook":
+            result = await this.toolHandlers.handlePinNotebook(
+              args as unknown as Parameters<ToolHandlers["handlePinNotebook"]>[0]
+            );
+            break;
+
+          case "list_collections":
+            result = await this.toolHandlers.handleListCollections();
+            break;
+
+          case "manage_collection":
+            result = await this.toolHandlers.handleManageCollection(
+              args as unknown as Parameters<ToolHandlers["handleManageCollection"]>[0],
+              this.askUserApproval
+            );
+            break;
+
+          case "share_notebook":
+            result = await this.toolHandlers.handleShareNotebook(
+              args as unknown as Parameters<ToolHandlers["handleShareNotebook"]>[0],
+              this.askUserApproval
+            );
+            break;
+
+          case "rename_source":
+            result = await this.toolHandlers.handleRenameSource(
+              args as unknown as Parameters<ToolHandlers["handleRenameSource"]>[0]
+            );
+            break;
+
+          case "rename_studio_artifact":
+            result = await this.toolHandlers.handleRenameStudioArtifact(
+              args as unknown as Parameters<ToolHandlers["handleRenameStudioArtifact"]>[0]
+            );
+            break;
+
+          case "get_studio_artifact":
+            result = await this.toolHandlers.handleGetStudioArtifact(
+              args as unknown as Parameters<ToolHandlers["handleGetStudioArtifact"]>[0]
+            );
+            break;
+
           case "search_notebooks":
             result = await this.toolHandlers.handleSearchNotebooks(args as { query: string });
             break;
@@ -1107,7 +1170,15 @@ class NotebookLMMCPServer {
 
         // Library edits change the resource list (one resource per notebook).
         if (
-          ["add_notebook", "update_notebook", "remove_notebook"].includes(name) &&
+          [
+            "add_notebook",
+            "update_notebook",
+            "remove_notebook",
+            "import_account_notebooks",
+            "create_notebook",
+            "rename_notebook",
+            "delete_notebook",
+          ].includes(name) &&
           (result as { success?: boolean } | undefined)?.success
         ) {
           void this.resourceHandlers.notifyListChanged();
@@ -1320,6 +1391,17 @@ async function main() {
     applyAccountToConfig(CONFIG, account);
     ensureDirectories();
     log.info(`👤 Account profile active: ${account}`);
+  }
+
+  // Persistent log next to the data it describes (per account). MCP clients
+  // seldom keep a server's stderr, so without it a failure leaves no trace.
+  const logFile = process.env.NOTEBOOKLM_LOG_FILE?.trim();
+  if (logFile?.toLowerCase() !== "false") {
+    try {
+      logger.setFile(logFile || path.join(CONFIG.dataDir, "logs", "server.log"));
+    } catch (error) {
+      console.error(`Log file disabled: ${error}`);
+    }
   }
 
   // Print banner
