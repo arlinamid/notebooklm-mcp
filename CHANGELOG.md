@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Tool descriptions and docs use neutral language examples instead of
   Hungarian ones.
+- Prompt templates' rendered instructions (`get_prompt_template`, MCP
+  prompts) now ask for `sources` scoped to the output instead of advising
+  against it, and report templates go to `create_your_own`.
 
 ## [3.2.1] - 2026-10-06
 

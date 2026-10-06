@@ -70,6 +70,17 @@ prefix (e.g. `mcp__notebooklm__ask_question`).
 | Work — meetings, policies, contracts, reports | [situations/work.md](references/situations/work.md) | Confidentiality, decisions and owners, presentable output |
 | Hobby — writing, worldbuilding, recipes, DIY, games | [situations/hobby.md](references/situations/hobby.md) | Your own canon; consistency checks; lighter vetting |
 
+## Prompt templates
+
+The server ships prompt packs for every action — chat questions, Configure Chat personas and
+each Studio type — plus any packs the user added. Before writing a prompt from scratch:
+`list_prompt_templates` with the `target` you are about to use (and a `query`), then
+`get_prompt_template` (learner-pack templates need a `topic`, optionally an audience `lens`).
+Adapt the returned `text` to the situation, fill every placeholder, add the `sources`
+subset, and call the target tool yourself. Read
+[references/prompt-templates.md](references/prompt-templates.md) the first time you use them:
+packs, filters, the target → tool map and quick picks by phase.
+
 ## The loop
 
 Plan the work as phases (e.g. collect → vet → understand → analyse → practise or produce →
@@ -198,6 +209,8 @@ sources added or excluded, Studio items created, settings changed.
   checklist, red flags, research query patterns, strictness by situation, register format
 - [references/configure-chat.md](references/configure-chat.md) — phase → persona map,
   prompt rules, adaptation recipe, save/restore, examples
+- [references/prompt-templates.md](references/prompt-templates.md) — bundled and user prompt
+  packs, finding and fetching templates, adapting them, target → tool map, picks by phase
 - [references/reports.md](references/reports.md) — scoping, templates, suggested formats,
   custom report prompts with examples, iteration
 - [references/studio-prompts.md](references/studio-prompts.md) — each Studio type: when,
