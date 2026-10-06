@@ -1457,6 +1457,7 @@ export class ToolHandlers {
           style: args.style,
           language: args.language,
           template: args.template,
+          title: args.title,
           sources: args.sources,
         },
       }),
@@ -1683,6 +1684,29 @@ export class ToolHandlers {
         }),
         candidates,
         next_step: next,
+      };
+    });
+  }
+
+  /**
+   * Handle suggest_reports — suggested report formats for a source subset.
+   */
+  async handleSuggestReports(
+    args: NotebookTargetArgs & { sources?: string[] }
+  ): Promise<ToolResult<Record<string, unknown>>> {
+    return this.withNotebookSession("suggest_reports", args, async (s) => {
+      const r = await s.suggestReports(args.sources);
+      return {
+        sources: r.sources,
+        suggestions: r.suggestions,
+        ...(r.overview && {
+          notebook_summary: r.overview.summary,
+          suggested_topics: r.overview.topics,
+        }),
+        next_step:
+          'Generate one with generate_studio_artifact: type "report", template ' +
+          '"create_your_own", the suggestion\'s prompt (adapt it if needed), its title, and the ' +
+          "same `sources`.",
       };
     });
   }

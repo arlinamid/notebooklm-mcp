@@ -122,8 +122,14 @@ export const generateStudioArtifactTool: Tool = {
         items: { type: "string" },
         description:
           "Restrict the output to these sources — each entry is a source title (exact or a " +
-          "unique substring) or source id. Omit to use all sources. Very useful in " +
-          "multi-source notebooks. Not available for `report`.",
+          "unique substring) or source id. Omit to use all sources. The most effective way " +
+          "to make an output accurate: pass only the vetted sources relevant to it. Reports " +
+          "take it with document templates (not the interactive learning overview).",
+      },
+      title: {
+        type: "string",
+        description:
+          "report only: the report's title, e.g. a suggestion's title from suggest_reports.",
       },
       template: {
         type: "string",
@@ -132,7 +138,8 @@ export const generateStudioArtifactTool: Tool = {
           "report only. `learning_overview` = interactive report; the others are document " +
           "reports. A `prompt` is appended to the template's built-in instructions; " +
           "`create_your_own` uses the prompt alone (required). Default: learning_overview, or " +
-          "create_your_own when `format: document` and a prompt is given.",
+          "create_your_own when `format: document` and a prompt is given; with `sources` the " +
+          "default is briefing_doc (or create_your_own with a prompt).",
       },
       ask_options: {
         type: "boolean",
@@ -498,7 +505,42 @@ export const downloadStudioArtifactTool: Tool = {
   },
 };
 
+export const suggestReportsTool: Tool = {
+  name: "suggest_reports",
+  description:
+    'NotebookLM\'s suggested report formats for a set of sources — the "Suggested Template" ' +
+    "cards of the Reports dialog, derived from the content (e.g. a technical analysis, a " +
+    "glossary, a teaching overview, an editorial guideline). Each has a title, description, " +
+    "audience (`general` / `expert`) and a ready-made `prompt`. Also returns the notebook " +
+    "summary and suggested questions.\n\n" +
+    "Pass the vetted `sources` the report should use: the suggestions are made for exactly " +
+    "those. Then generate one with `generate_studio_artifact` (type `report`, template " +
+    "`create_your_own`, the suggestion's prompt — adapted to the user's audience, structure " +
+    "and language if needed — its `title`, and the same `sources`). Uses little AI usage; " +
+    "nothing is generated.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        description: "Source titles or ids the report will use. Omit for all sources.",
+      },
+      ...showBrowser,
+      ...sharedNotebookTargeting,
+    },
+  },
+  annotations: {
+    title: "Suggest report formats",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+};
+
 export const studioTools: Tool[] = [
+  suggestReportsTool,
   deleteSourceTool,
   deleteStudioArtifactTool,
   listSourcesTool,

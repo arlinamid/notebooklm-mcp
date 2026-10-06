@@ -233,7 +233,7 @@ When several MCP clients each start the server on the same data directory (for e
 
 ## Tools
 
-All 37 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
+All 38 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
 
 ### Q&A
 
@@ -252,7 +252,8 @@ All 37 tools below are visible under the `full` profile. See [Profiles](#tool-pr
 | `get_audio_status` | Non-blocking audio state: `ready` / `in_progress` / `not_started`. |
 | `download_audio` | Save the most recent Audio Overview (`.m4a`, original title as file name) to `destination_dir`. |
 | `download_studio_artifact` | Save any finished Studio output: audio `.m4a`, video `.mp4`, infographic `.png`, slide deck `.pdf`/`.pptx`, report `.md`, data table `.csv`, quiz/flashcards `.md`/`.json`, mind map `.json`. Pick by `artifact_id` or newest of a `type`. Uses NotebookLM's data API, not the menus. |
-| `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template`, and `sources` (work from a subset of sources). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. Audio, video, infographic and slide deck start through the data API (returns `artifactId`); `language` takes a code, the listed name or the English name and defaults to the account's output language. |
+| `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template` and `title`, and `sources` (work from a subset of sources — reports too, with document templates). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. Audio, video, infographic and slide deck start through the data API (returns `artifactId`); `language` takes a code, the listed name or the English name and defaults to the account's output language. |
+| `suggest_reports` | NotebookLM's suggested report formats for a source subset (the Reports dialog's "Suggested Template" cards): title, description, audience and a ready-made prompt, plus the notebook summary and suggested questions. Generate one with `generate_studio_artifact` (`report`, `create_your_own`, same `sources`). |
 | `list_studio_artifacts` | Studio library incl. notes: id, type, title, details, status (`ready` / `generating` / `scheduled`). |
 | `list_sources` | Sources with stable id, title, kind and chat selection, plus type, URL (or YouTube channel), word / character counts, status, origin (`research` = marked by NotebookLM as a research import) and date added. |
 | `get_source` | One source in depth for source criticism: metadata, NotebookLM's source guide (summary + keywords) and, with `include_text`, the text NotebookLM actually indexed, in pages. Flags sources with very little indexed text (landing page, abstract, paywall). |

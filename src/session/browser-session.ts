@@ -95,7 +95,13 @@ import { notebookUuidFromUrl } from "../notebooklm/account-notebooks.js";
 import { RpcError, rpcEnabled } from "../notebooklm/rpc.js";
 import { askRpc } from "../notebooklm/chat-rpc.js";
 import { addSourcesRpc, configureChatRpc, readUsageRpc } from "../notebooklm/rpc-ops.js";
-import { generateStudioRpc } from "../notebooklm/studio-rpc.js";
+import {
+  generateStudioRpc,
+  notebookOverviewRpc,
+  suggestReportsRpc,
+  type NotebookOverview,
+  type ReportSuggestion,
+} from "../notebooklm/studio-rpc.js";
 import {
   getSourceGuideRpc,
   getSourceTextRpc,
@@ -983,6 +989,38 @@ export class BrowserSession {
         };
       }
       return result;
+    });
+  }
+
+  /**
+   * NotebookLM's suggested report formats for a source subset (the Reports
+   * dialog's "Suggested Template" cards), plus the notebook overview.
+   */
+  async suggestReports(sources?: string[]): Promise<{
+    sources: string[];
+    suggestions: ReportSuggestion[];
+    overview: NotebookOverview | null;
+  }> {
+    return this.onPage("suggest_reports", async (page) => {
+      const notebookId = this.notebookId();
+      const details = await this.requireRpc("suggest_reports", () =>
+        listSourceDetailsRpc(page, notebookId)
+      );
+      if (details.length === 0) throw new Error("This notebook has no sources.");
+      const ids = sources?.length
+        ? [...(await resolveSourceIds(details, sources))]
+        : details.map((d) => d.id);
+      const suggestions = await this.requireRpc("suggest_reports", () =>
+        suggestReportsRpc(page, notebookId, ids)
+      );
+      const overview = await this.tryRpc("suggest_reports", () =>
+        notebookOverviewRpc(page, notebookId)
+      ).catch(() => null);
+      return {
+        sources: details.filter((d) => ids.includes(d.id)).map((d) => d.title),
+        suggestions,
+        overview,
+      };
     });
   }
 

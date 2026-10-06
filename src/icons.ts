@@ -48,6 +48,7 @@ const TOOL_GROUPS: Record<IconName, string[]> = {
   chat: ["ask_question", "configure_chat", "configure_output_language", "save_answer_as_note"],
   studio: [
     "generate_studio_artifact",
+    "suggest_reports",
     "list_studio_artifacts",
     "delete_studio_artifact",
     "generate_audio",

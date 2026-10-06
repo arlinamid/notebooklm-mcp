@@ -26,14 +26,18 @@ metadata:
 
 NotebookLM answers from the sources in a notebook, with citations. That makes it strong at
 grounded synthesis and weak wherever the sources are weak: its answers, podcasts and slides
-are exactly as good as what went in. Everything in this skill follows from three facts:
+are exactly as good as what went in. Everything in this skill follows from four facts:
 
 1. **Source quality decides the outcome** — and NotebookLM's own source discovery often
    brings weak material (encyclopedias, blogs, marketing, landing pages, pirated copies).
 2. **Every AI action spends a compute budget** that refills every 5 hours up to a weekly
    cap. Cost grows with prompt complexity, chat length and feature (Studio and Deep Research
    cost the most). Vague requests waste it twice: once on the bad run, once on the redo.
-3. **The notebook's chat configuration is a persistent system prompt** that shapes every
+3. **Which sources a generation uses decides its accuracy.** Every answer and every Studio
+   output can be limited to chosen sources (`sources`). A few vetted sources that are about the
+   question give precise, cited results; the whole notebook gives a blend of core material,
+   background and weak leftovers. Choose the subset for *each* question and output.
+4. **The notebook's chat configuration is a persistent system prompt** that shapes every
    answer — so it should match the current phase of work, and be restored afterwards.
 
 Tool names below are the notebooklm MCP server's tool names; clients may show them with a
@@ -94,8 +98,10 @@ sources in a conversation; it has the checklists, red flags and query patterns.
   YouTube only public videos with a transcript; scanned PDFs, tables, formulas and figures
   lose content. Fix before adding: find the open-access full text, OCR, or paste tables as
   Markdown text sources.
-- **Work from the vetted subset** — pass `sources` to `ask_question` and the Studio tools
-  instead of deleting weak sources. Deleting needs the user's approval.
+- **Scope every generation** — pass `sources` to `ask_question`, `generate_studio_artifact`
+  (reports too, with document templates), `generate_audio` and `suggest_reports`: the vetted
+  sources relevant to *that* question or output, typically 3–10. Excluding weak sources this
+  way is better than deleting them (deleting needs the user's approval).
 - **Keep a source register** (id · title · verdict ✅/⚠️/❌ · reason · used in phase) in
   your replies; write it to a file only for multi-session projects or when asked.
 
@@ -122,8 +128,8 @@ prompt. In short:
 - Make questions specific and bundle related sub-questions into one request.
 - Reuse `session_id` for follow-ups; `reset_session` when the topic changes (long chats
   cost more per answer and drift).
-- Use `source_format: "footnotes"` (or `json`) whenever claims will be reused, and the
-  vetted `sources` subset.
+- Pass the `sources` that the question is about — comparing two documents? select those
+  two. Use `source_format: "footnotes"` (or `json`) whenever claims will be reused.
 - Check the answer against its citations: does the excerpt support the claim? Is a key
   claim backed by only one source? Do sources disagree? Report disagreement instead of
   smoothing it over.
@@ -147,7 +153,11 @@ generations are the most expensive actions, so:
 - Compose the prompt from **goal + audience + structure + style + grounding + language**,
   starting from a pack template (`list_prompt_templates` with the Studio `target`;
   learner-pack templates take `topic` and an audience `lens`).
-- Always pass the vetted `sources` subset (not available for `report`).
+- Always pass the vetted `sources` subset chosen for this output.
+- **Reports** are the most useful output — structured, citable, downloadable text. Read
+  [references/reports.md](references/reports.md): scope the sources, check NotebookLM's
+  source-derived suggestions with `suggest_reports`, then write a precise `create_your_own`
+  prompt.
 - Generation is asynchronous: keep working (questions are fine meanwhile), poll
   `list_studio_artifacts` about once a minute, then `download_studio_artifact`.
 - An Audio or Video Overview is a summary for listening, not a citable source — hosts can
@@ -182,6 +192,8 @@ sources added or excluded, Studio items created, settings changed.
   checklist, red flags, research query patterns, strictness by situation, register format
 - [references/configure-chat.md](references/configure-chat.md) — phase → persona map,
   prompt rules, adaptation recipe, save/restore, examples
+- [references/reports.md](references/reports.md) — scoping, templates, suggested formats,
+  custom report prompts with examples, iteration
 - [references/studio-prompts.md](references/studio-prompts.md) — each Studio type: when,
   options, prompt recipe, templates, pitfalls, export and post-processing
 - `references/situations/` — learning, research, work, hobby playbooks

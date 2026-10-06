@@ -10,7 +10,8 @@ Studio generations are the most expensive actions in NotebookLM. Before each one
 
 1. **Purpose** — what will the user do with it (listen on a commute, present to a board,
    revise for an exam, publish)? That decides type, length and tone.
-2. **Sources** — the vetted subset for this output (`sources`), not everything in the notebook.
+2. **Sources** — the vetted subset for this output (`sources`), not everything in the
+   notebook. This is the strongest accuracy lever for every type, audio included.
 3. **Audience and language** — who, what level, which language.
 4. **Plan check with the user** for anything beyond a single output; `get_usage` before a
    batch; `generate_later: true` when the rolling window is nearly used (queued, ready
@@ -49,7 +50,7 @@ Fill or remove every placeholder, then pass the result as `prompt` (`custom_prom
 | `video` | visual explainer, onboarding, social clip | `format`: `explainer`, `short`, `cinematic` (plan-dependent) | `learner-vd-01…04`, `pa-studio-video-*` |
 | `slide_deck` | presenting, teaching, briefing | `format`: `detailed` (reads standalone) / `presenter` (speaker support); `length` | `learner-sd-01…05`, `pa-studio-slide-deck-*` |
 | `infographic` | one-page overview, comparison, process | `orientation`, `detail` (`concise`/`standard`/`detailed`), `style` (`professional`, `sketch_note`, `editorial`, `instructional`, `scientific` …) | `learner-ig-01…10`, `pa-studio-infographic-*` |
-| `report` | briefing doc, study guide, blog post, own format | `template`: `briefing_doc`, `study_guide`, `blog_post`, `learning_overview`, `create_your_own` (prompt required); no `sources` option | `pa-studio-report-*` |
+| `report` | briefing doc, study guide, blog post, own format — see [reports.md](reports.md) | `template`: `briefing_doc`, `study_guide`, `blog_post`, `create_your_own` (prompt required), `learning_overview` (interactive); `title`; `sources` with document templates | `suggest_reports`, `pa-studio-report-*` |
 | `quiz` | self-testing | `count`, `difficulty` | `learner-qz-03…05`, `pa-studio-quiz-*` |
 | `flashcards` | spaced repetition, terminology | `count`, `difficulty`, `include_images` | `learner-qz-01…02`, `pa-studio-flashcards-*` |
 | `data_table` | structured comparison, evidence matrix | — | `pa-studio-data-table-*` |
@@ -62,7 +63,7 @@ Format choices that matter:
 - **Slides `presenter`** keeps slides sparse for a speaker; **`detailed`** when the deck is
   sent around and read without a speaker.
 - **Report `create_your_own`** with a precise prompt is the most controllable text output
-  (e.g. an evidence summary with a fixed section structure).
+  (e.g. an evidence summary with a fixed section structure) — see [reports.md](reports.md).
 
 ## Language
 

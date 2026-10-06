@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Reports from a subset of sources: `generate_studio_artifact` with
+  `type: "report"` and a document template (`briefing_doc`, `study_guide`,
+  `blog_post`, `create_your_own`) now runs through NotebookLM's data API and
+  takes `sources` — the Reports dialog has no source picker, so this was not
+  possible before. New `title` option.
+- `suggest_reports` — NotebookLM's source-derived report suggestions (the
+  "Suggested Template" cards) for a chosen set of sources, each with a
+  ready-made prompt and audience, plus the notebook summary and suggested
+  questions.
+- Agent skill `notebooklm-workflow` (Agent Skills format) and plugin
+  manifests for Claude, Codex and Cursor; `npm run skill:validate`,
+  `skill:zip`, `skill:install`. See the README, "Agent skill and plugins".
+
+### Changed
+
+- Tool descriptions and docs use neutral language examples instead of
+  Hungarian ones.
+
 ## [3.2.1] - 2026-10-06
 
 ### Added

@@ -184,7 +184,7 @@ Poll \`list_studio_artifacts\` until the item's status is \`ready\`
 \`download_studio_artifact\` (audio, video, infographic, slides as PDF or
 PPTX, report, data table, quiz, flashcards, mind map).
 
-Every Studio type except \`report\` (and \`generate_audio\`) accepts
+Every Studio type (reports with document templates) and \`generate_audio\` accept
 \`sources\` to work from a subset of sources; \`ask_question\` accepts
 \`sources\` too (the notebook's own selection is left as it was).
 \`list_sources\` gives ids for duplicate titles.
@@ -1016,6 +1016,12 @@ class NotebookLMMCPServer {
             result = await this.toolHandlers.handleDeleteStudioArtifact(
               args as unknown as Parameters<ToolHandlers["handleDeleteStudioArtifact"]>[0],
               this.askUserApproval
+            );
+            break;
+
+          case "suggest_reports":
+            result = await this.toolHandlers.handleSuggestReports(
+              args as Parameters<ToolHandlers["handleSuggestReports"]>[0]
             );
             break;
 

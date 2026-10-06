@@ -1,6 +1,6 @@
 # Tools
 
-Every tool the server registers (37 under the `full` profile), with its parameters, an example where useful, and the return shape. Parameter tables are generated from the live tool schemas.
+Every tool the server registers (38 under the `full` profile), with its parameters, an example where useful, and the return shape. Parameter tables are generated from the live tool schemas.
 
 The server returns each tool result wrapped as `{ "success": true, "data": <object> }` (or `{ "success": false, "error": <string> }`). The shapes below describe the inner `data`.
 
@@ -335,7 +335,7 @@ The file is named after the item's title; an existing file is kept and the new o
 
 ## generate_studio_artifact
 
-Start any Studio output: audio, video, slide deck, mind map, report, flashcards, quiz, infographic or data table. Audio, video, infographic and slide deck are started through NotebookLM's data API (a few seconds, no dialog) whenever every option has a known code and a language is known — the given `language`, else the account's output language (`configure_output_language`). Everything else, "Generate later", and an account on *Default* language use the customise dialog. Generation continues on Google's side; poll `list_studio_artifacts`, then save the result with `download_studio_artifact`.
+Start any Studio output: audio, video, slide deck, mind map, report, flashcards, quiz, infographic or data table. Audio, video, infographic, slide deck and document reports are started through NotebookLM's data API (a few seconds, no dialog) whenever every option has a known code and a language is known — the given `language`, else the account's output language (`configure_output_language`). Everything else, "Generate later", and an account on *Default* language use the customise dialog. Generation continues on Google's side; poll `list_studio_artifacts`, then save the result with `download_studio_artifact`.
 
 ### Parameters
 
@@ -353,8 +353,9 @@ Start any Studio output: audio, video, slide deck, mind map, report, flashcards,
 | `detail` | `concise` / `standard` / `detailed` | no | infographic level of detail (`detailed` is beta). |
 | `style` | `auto` / `sketch_note` / `professional` / `bento_grid` / `editorial` / `instructional` / `bricks` / `clay` / `anime` / `kawaii` / `scientific` | no | infographic visual style. |
 | `language` | string | no | Output language: a code ("ja"), the name NotebookLM lists ("日本語") or the English name ("Japanese"); all types except video. Defaults to the account's output language (see `configure_output_language`). |
-| `sources` | string[] | no | Restrict the output to these sources — each entry is a source title (exact or a unique substring) or source id. Omit to use all sources. Very useful in multi-source notebooks. Not available for `report`. |
-| `template` | `learning_overview` / `create_your_own` / `briefing_doc` / `study_guide` / `blog_post` | no | report only. `learning_overview` = interactive report; the others are document reports. A `prompt` is appended to the template's built-in instructions; `create_your_own` uses the prompt alone (required). Default: learning_overview, or create_your_own when `format: document` and a prompt is given. |
+| `sources` | string[] | no | Restrict the output to these sources — each entry is a source title (exact or a unique substring) or source id. Omit to use all sources. The most effective way to make an output accurate: pass only the vetted sources relevant to it. Reports take it with document templates (not the interactive learning overview). |
+| `title` | string | no | report only: the report's title, e.g. a suggestion's title from `suggest_reports`. |
+| `template` | `learning_overview` / `create_your_own` / `briefing_doc` / `study_guide` / `blog_post` | no | report only. `learning_overview` = interactive report; the others are document reports. A `prompt` is appended to the template's built-in instructions; `create_your_own` uses the prompt alone (required). Default: learning_overview, or create_your_own when `format: document` and a prompt is given; with `sources` the default is briefing_doc (or create_your_own with a prompt). |
 | `ask_options` | boolean | no | Show the user a form to choose the options (needs client elicitation support; otherwise the given arguments are used). Default false. |
 | `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
 
@@ -373,6 +374,40 @@ Start any Studio output: audio, video, slide deck, mind map, report, flashcards,
 ```
 
 `language` takes a code (`ja`), the name NotebookLM lists (`日本語`) or the English name (`Japanese`). An unknown name is rejected with the list the dialog offers.
+
+---
+
+## suggest_reports
+
+NotebookLM's suggested report formats for a set of sources — the "Suggested Template" cards of the Reports dialog, which NotebookLM derives from the content (a technical analysis, a glossary, a teaching overview …). Each comes with a title, description, audience and a ready-made prompt. Also returns the notebook summary and its suggested questions. Nothing is generated.
+
+Pass the `sources` the report will use — the suggestions are made for exactly those — then generate one with `generate_studio_artifact` (`type: "report"`, `template: "create_your_own"`, the suggestion's `prompt`, its `title` and the same `sources`).
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `sources` | string[] | no | Source titles or ids the report will use. Omit for all sources. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "sources": ["Regulation (EU) 2024/1689 – EUR-Lex", "Commission guidelines on high-risk AI"],
+  "suggestions": [
+    {
+      "title": "Compliance checklist",
+      "description": "Step-by-step obligations for providers of high-risk systems.",
+      "prompt": "Create a compliance checklist that …",
+      "audience": "expert"            // "general" | "expert"
+    }
+  ],
+  "notebook_summary": "The sources describe …",
+  "suggested_topics": [{ "question": "Which systems count as high-risk?", "prompt": "Create a detailed briefing document …" }],
+  "next_step": "Generate one with generate_studio_artifact …"
+}
+```
 
 ---
 
