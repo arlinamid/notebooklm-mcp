@@ -184,7 +184,12 @@ Poll \`list_studio_artifacts\` until the item's status is \`ready\`
 \`download_studio_artifact\` (audio, video, infographic, slides as PDF or
 PPTX, report, data table, quiz, flashcards, mind map).
 
-Every Studio type except \`report\` (and \`generate_audio\`) accepts
+Reports are the most reusable output. \`suggest_reports\` returns
+NotebookLM's report formats derived from chosen sources, each with a ready
+prompt; generate one with \`type: "report"\`, \`template:
+"create_your_own"\`, that prompt and the same \`sources\`.
+
+Every Studio type (reports with document templates) and \`generate_audio\` accept
 \`sources\` to work from a subset of sources; \`ask_question\` accepts
 \`sources\` too (the notebook's own selection is left as it was).
 \`list_sources\` gives ids for duplicate titles.
@@ -1019,6 +1024,12 @@ class NotebookLMMCPServer {
             );
             break;
 
+          case "suggest_reports":
+            result = await this.toolHandlers.handleSuggestReports(
+              args as Parameters<ToolHandlers["handleSuggestReports"]>[0]
+            );
+            break;
+
           case "research_sources":
             result = await this.toolHandlers.handleResearchSources(
               args as Parameters<ToolHandlers["handleResearchSources"]>[0]
@@ -1291,6 +1302,14 @@ async function main() {
     const cli = new CliHandler();
     await cli.handleCommand(args);
     process.exit(0);
+  }
+  if (args[0] === "skill") {
+    // The agent skill ships in the package (skills/, scripts/skill.mjs).
+    const cliPath = new URL("../scripts/skill.mjs", import.meta.url).href;
+    const { runSkillCli } = (await import(cliPath)) as {
+      runSkillCli: (argv: string[]) => number;
+    };
+    process.exit(runSkillCli(args.slice(1)));
   }
 
   // Apply --account / NOTEBOOKLM_ACCOUNT before any directory or browser is

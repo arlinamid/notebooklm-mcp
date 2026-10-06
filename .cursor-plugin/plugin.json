@@ -1,0 +1,25 @@
+{
+  "name": "notebooklm",
+  "version": "3.3.0",
+  "description": "Google NotebookLM (Gemini Notebook) for agents: the notebooklm MCP server plus the notebooklm-workflow skill — source-vetted research, learning and Studio workflows.",
+  "author": {
+    "name": "János Rózsavölgyi (arlinamid)",
+    "url": "https://github.com/arlinamid"
+  },
+  "keywords": [
+    "notebooklm",
+    "gemini-notebook",
+    "mcp",
+    "agent-skill",
+    "research",
+    "source-criticism",
+    "citations",
+    "study",
+    "reports",
+    "podcast",
+    "audio-overview"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json",
+  "logo": "./assets/logo.png"
+}

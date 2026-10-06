@@ -1,0 +1,14 @@
+{
+  "name": "notebooklm",
+  "version": "3.3.0",
+  "description": "Google NotebookLM (Gemini Notebook) for agents: the notebooklm MCP server plus the notebooklm-workflow skill — source-vetted research, learning and Studio workflows.",
+  "mcpServers": {
+    "notebooklm": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@arlinamid/notebooklm-mcp@latest"
+      ]
+    }
+  }
+}

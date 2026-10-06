@@ -1,6 +1,6 @@
 {
   "name": "@arlinamid/notebooklm-mcp",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "description": "MCP server for Google NotebookLM / Gemini Notebook — chat with citations, sources, every Studio output, notes, prompt templates, stdio + Streamable-HTTP transports.",
   "type": "module",
   "bin": {
@@ -18,8 +18,11 @@
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "import:prompts": "node scripts/import-prompt-packs.mjs",
-    "check": "npm run format:check && npm run lint && npm run build && npm run test:smoke",
-    "test:smoke": "node scripts/smoke-test.mjs"
+    "check": "npm run format:check && npm run lint && npm run skill:validate && npm run build && npm run test:smoke",
+    "test:smoke": "node scripts/smoke-test.mjs",
+    "skill:validate": "node scripts/skill.mjs validate",
+    "skill:zip": "node scripts/skill.mjs zip",
+    "skill:install": "node scripts/skill.mjs install"
   },
   "keywords": [
     "mcp",
@@ -27,7 +30,16 @@
     "gemini",
     "gemini-notebook",
     "ai",
-    "claude"
+    "claude",
+    "agent-skill",
+    "skills",
+    "claude-plugin",
+    "codex-plugin",
+    "cursor-plugin",
+    "gemini-cli-extension",
+    "research",
+    "citations",
+    "source-criticism"
   ],
   "author": "János Rózsavölgyi (https://github.com/arlinamid)",
   "contributors": [
@@ -48,11 +60,17 @@
   "files": [
     "dist",
     "README.md",
-    "NOTEBOOKLM_USAGE.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "docs",
-    "prompts"
+    "prompts",
+    "skills",
+    "scripts/skill.mjs",
+    ".claude-plugin",
+    ".codex-plugin",
+    ".cursor-plugin",
+    "mcp.json",
+    "assets"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",

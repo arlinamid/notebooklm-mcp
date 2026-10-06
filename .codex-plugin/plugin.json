@@ -1,0 +1,48 @@
+{
+  "name": "notebooklm",
+  "version": "3.3.0",
+  "description": "Google NotebookLM (Gemini Notebook) for agents: the notebooklm MCP server plus the notebooklm-workflow skill — source-vetted research, learning and Studio workflows.",
+  "skills": "./skills/",
+  "mcpServers": "./mcp.json",
+  "interface": {
+    "displayName": "NotebookLM",
+    "shortDescription": "Source-vetted NotebookLM research, learning and Studio workflows",
+    "longDescription": "Connects the agent to Google NotebookLM (Gemini Notebook) through the notebooklm MCP server: ask questions with citations, add and inspect sources, find sources with Fast or Deep Research and import only vetted ones, configure the notebook's chat, and create, download and manage every Studio output (reports, audio and video overviews, slide decks, infographics, quizzes, flashcards, data tables, mind maps). The bundled notebooklm-workflow skill teaches the agent to vet sources before every phase, scope each answer and output to the right sources, write phase-specific chat prompts and Studio prompts, and save quota — for learning, research, work and hobby projects.",
+    "developerName": "János Rózsavölgyi (arlinamid)",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/arlinamid/notebooklm-mcp",
+    "defaultPrompt": [
+      "Vet the sources in my NotebookLM notebook and tell me which ones to rely on",
+      "Find reliable sources on this topic with NotebookLM research and import only the good ones",
+      "Make a study guide and flashcards from the course notebook in my language",
+      "Suggest report formats for these sources and write the best one"
+    ],
+    "brandColor": "#0F766E",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png"
+  },
+  "author": {
+    "name": "János Rózsavölgyi (arlinamid)",
+    "url": "https://github.com/arlinamid"
+  },
+  "homepage": "https://github.com/arlinamid/notebooklm-mcp#readme",
+  "repository": "https://github.com/arlinamid/notebooklm-mcp",
+  "license": "MIT",
+  "keywords": [
+    "notebooklm",
+    "gemini-notebook",
+    "mcp",
+    "agent-skill",
+    "research",
+    "source-criticism",
+    "citations",
+    "study",
+    "reports",
+    "podcast",
+    "audio-overview"
+  ]
+}

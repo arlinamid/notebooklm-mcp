@@ -230,10 +230,12 @@ export interface StudioOptions {
   /** Output language as shown in the dialog's own name, e.g. "English", "magyar", "Deutsch". */
   language?: string;
   template?: ReportTemplate;
+  /** Report title (document reports over RPC), e.g. a suggested template's title. */
+  title?: string;
   /**
    * Restrict the job to these sources (UUID, exact title, or unique title
-   * substring). Omit to use every source of the notebook. Not available for
-   * reports.
+   * substring). Omit to use every source of the notebook. Reports take it on
+   * the RPC path, for document templates only.
    */
   sources?: string[];
 }
@@ -244,12 +246,18 @@ export function validateStudioOptions(type: StudioType, o: StudioOptions): strin
     .filter(([k, v]) => v !== undefined && k !== "sources")
     .map(([k]) => k);
   if (o.sources !== undefined) {
-    if (type === "report") return "report has no source selector — omit `sources`";
+    if (type === "report") {
+      return (
+        "a report from selected sources needs a document template (briefing_doc, study_guide, " +
+        "blog_post, create_your_own) and NotebookLM's data API — the interactive report and " +
+        "the UI path use every selected source of the notebook"
+      );
+    }
     if (!Array.isArray(o.sources) || o.sources.length === 0)
       return "`sources` must be a non-empty list of source titles or ids";
   }
   if (type === "report") {
-    const allowed = ["format", "template", "language"];
+    const allowed = ["format", "template", "language", "title"];
     const bad = used.filter((k) => !allowed.includes(k));
     if (bad.length) return `report supports only: ${allowed.join(", ")} (got ${bad.join(", ")})`;
     if (o.format && !(o.format in REPORT_FORMATS))

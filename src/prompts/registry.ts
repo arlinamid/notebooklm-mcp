@@ -552,11 +552,19 @@ function goalFor(target: PromptTarget): string {
   return TARGET_LABEL[target];
 }
 
+/** Every generation can be limited to chosen sources — the main accuracy lever. */
+const SCOPE =
+  "Pass `sources` with the sources this output should use — the vetted ones about its topic; " +
+  "that is the strongest lever on accuracy. ";
+
 /** The tool contract for each target, with the reason where the choice is not obvious. */
 function actionFor(target: PromptTarget): string {
   switch (target) {
     case "ask":
-      return "Send the template as the `question` of `ask_question`.";
+      return (
+        "Send the template as the `question` of `ask_question`, with `sources` set to the " +
+        "sources the question is about when the notebook holds more than that."
+      );
     case "configure_chat":
       return (
         "The template becomes the `custom_prompt` of `configure_chat`. That setting persists and " +
@@ -564,12 +572,24 @@ function actionFor(target: PromptTarget): string {
         "(`configure_chat` without arguments) and get my go-ahead before replacing it."
       );
     case "audio":
-      return "Send the template as the `custom_prompt` of `generate_audio`.";
+      return (
+        "Send the template as the `custom_prompt` of `generate_audio`. " +
+        SCOPE +
+        "Format and length keep NotebookLM's defaults unless I ask for something specific."
+      );
+    case "report":
+      return (
+        "Send the template as the `prompt` of `generate_studio_artifact` with " +
+        '`type: "report"` and `template: "create_your_own"`. ' +
+        SCOPE +
+        "Language keeps the account's setting unless I ask for another."
+      );
     default:
       return (
         `Send the template as the \`prompt\` of \`generate_studio_artifact\` with \`type: "${target}"\`. ` +
-        "Its other options (sources, language, format …) keep NotebookLM's defaults unless I ask " +
-        "for something specific, because each one narrows the output."
+        SCOPE +
+        "Its other options (language, format …) keep NotebookLM's defaults unless I ask for " +
+        "something specific."
       );
   }
 }

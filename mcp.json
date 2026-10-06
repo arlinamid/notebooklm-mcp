@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "notebooklm": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@arlinamid/notebooklm-mcp@latest"]
+    }
+  }
+}

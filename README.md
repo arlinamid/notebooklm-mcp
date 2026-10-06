@@ -17,18 +17,21 @@
 
 MCP server for Google NotebookLM — rebranded by Google as **Gemini Notebook** and served from `notebook.google.com` since September 2026 (old `notebooklm.google.com` links keep working). It drives a real Chrome via Patchright (stealth + persistent fingerprint) so an agent can:
 
-- chat against a notebook with DOM-level citations, optionally restricted to a subset of sources;
-- add sources (websites, YouTube, pasted text, local files) and remove them;
-- create every Studio output — Audio and Video Overviews, slide decks, mind maps, reports, flashcards, quizzes, infographics, data tables — with their customisation options, and download audio;
+- chat against a notebook with citations, restricted to the sources a question is about;
+- add sources (websites, YouTube, pasted text, local files), inspect what NotebookLM actually indexed, and remove them;
+- find new sources with NotebookLM's Fast / Deep Research (web or Google Drive) and import only the ones you vetted;
+- create every Studio output — Audio and Video Overviews, slide decks, mind maps, reports, flashcards, quizzes, infographics, data tables — from chosen sources, with their customisation options, and download them; get NotebookLM's source-derived report suggestions;
 - save chat answers as notes and turn notes into sources;
-- read or set the notebook's chat system instruction and check AI usage limits;
-- use 130+ curated prompt templates exposed as MCP prompts.
+- read or set the notebook's chat system instruction and output language, and check AI usage limits;
+- use 130+ curated prompt templates exposed as MCP prompts;
+- install the **`notebooklm-workflow` agent skill** — source criticism, phase prompts, reports and Studio workflows — into Claude, Codex, Gemini CLI, Cursor and other agents, or the server and skill together as a plugin / extension.
 
 Two transports are supported: `stdio` (default) and Streamable-HTTP.
 
 - [Requirements](#requirements--platform-support)
 - [Install](#install)
 - [Connect](#connect-to-claude-code) — Claude Code, Cursor, Codex, generic MCP
+- [Agent skill and plugins](#agent-skill-and-plugins)
 - [Authentication](#authentication)
 - [Transports](#transports)
 - [Multi-account](#multi-account)
@@ -136,6 +139,37 @@ Run the server in HTTP mode (see [Transports](#transports)) and POST JSON-RPC ag
 
 ---
 
+## Agent skill and plugins
+
+The tools say *what* NotebookLM can do; the **`notebooklm-workflow` skill** ([`skills/notebooklm-workflow/`](./skills/notebooklm-workflow/SKILL.md)) teaches an agent *how* to work with it: source criticism before every phase, phase-specific Configure Chat prompts, Studio prompts, output language, quota-aware questions and verification — with playbooks for learning, research, work and hobby projects. It follows the open [Agent Skills](https://agentskills.io) format, so it works in any agent that loads skills, and needs the MCP server above.
+
+The skill ships in the npm package, so one command installs it for the agents on the machine — no clone needed:
+
+```bash
+npx @arlinamid/notebooklm-mcp@latest skill install
+```
+
+It detects the agents on the machine and copies the skill only for those: `~/.claude/skills` for Claude Code, one shared copy in `~/.agents/skills` for Codex, Gemini CLI and Cursor, `~/.copilot/skills` for GitHub Copilot, `~/.config/opencode/skills` for OpenCode. `--agent claude,codex` picks agents explicitly, `--dry-run` shows what would happen, `--force` replaces an older copy. `skill zip` writes the upload ZIP for Claude Desktop / claude.ai (Settings → Capabilities → Skills; code execution must be on), `skill path` prints the bundled folder.
+
+Plugins bundle the server and the skill; the marketplace installs them from the npm package, so you get the released version:
+
+| Agent | Install |
+|---|---|
+| Claude Code | `claude plugin marketplace add arlinamid/notebooklm-mcp`, then `claude plugin install notebooklm@arlinamid-notebooklm` |
+| Claude Desktop | add the marketplace `arlinamid/notebooklm-mcp` in the plugin settings, or upload the ZIP from `skill zip` |
+| Codex | `codex plugin marketplace add arlinamid/notebooklm-mcp`, then `codex plugin add notebooklm@arlinamid-notebooklm` |
+| Cursor | the package and repository are a Cursor plugin (`.cursor-plugin/plugin.json`) |
+| Gemini CLI | `gemini extensions install https://github.com/arlinamid/notebooklm-mcp` (server + skill; the repository is a Gemini extension) |
+
+From GitHub without npm:
+
+- Clone and run the installer — it has no dependencies: `git clone https://github.com/arlinamid/notebooklm-mcp && node notebooklm-mcp/scripts/skill.mjs install`
+- [`npx skills`](https://github.com/vercel-labs/skills): `npx skills add arlinamid/notebooklm-mcp -g -a claude-code codex` — name the agents you have with `-a`; without it the tool offers every agent it knows.
+
+The plugins start the server with `npx -y @arlinamid/notebooklm-mcp@latest` ([`mcp.json`](./mcp.json)). If you already configured the server by hand, remove that entry or install the skill alone, so the tools are not listed twice.
+
+---
+
 ## Authentication
 
 `setup_auth` opens a visible Chrome, you log in to your Google account once, and the cookies are persisted in the per-user Chrome profile. Subsequent runs reuse that profile and do not need to log in again.
@@ -216,7 +250,7 @@ When several MCP clients each start the server on the same data directory (for e
 
 ## Tools
 
-All 37 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
+All 38 tools below are visible under the `full` profile. See [Profiles](#tool-profiles) for the trimmed sets. Browser-driven tools accept `notebook_url` / `notebook_id` / `session_id` to pick the notebook and `show_browser` for debugging.
 
 ### Q&A
 
@@ -235,7 +269,8 @@ All 37 tools below are visible under the `full` profile. See [Profiles](#tool-pr
 | `get_audio_status` | Non-blocking audio state: `ready` / `in_progress` / `not_started`. |
 | `download_audio` | Save the most recent Audio Overview (`.m4a`, original title as file name) to `destination_dir`. |
 | `download_studio_artifact` | Save any finished Studio output: audio `.m4a`, video `.mp4`, infographic `.png`, slide deck `.pdf`/`.pptx`, report `.md`, data table `.csv`, quiz/flashcards `.md`/`.json`, mind map `.json`. Pick by `artifact_id` or newest of a `type`. Uses NotebookLM's data API, not the menus. |
-| `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template`, and `sources` (work from a subset of sources). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. Audio, video, infographic and slide deck start through the data API (returns `artifactId`); `language` takes a code, the listed name or the English name and defaults to the account's output language. |
+| `generate_studio_artifact` | Create any Studio output (`video`, `slide_deck`, `mind_map`, `report`, `flashcards`, `quiz`, `infographic`, `data_table`, `audio`) with an optional `prompt` and type-specific options: `format`, `length`, `count`, `difficulty`, `include_images`, `orientation`, `detail`, `style`, `language`, report `template` and `title`, and `sources` (work from a subset of sources — reports too, with document templates). `generate_later` queues it outside the current limit window. `ask_options: true` lets the user pick the options in a form. Audio, video, infographic and slide deck start through the data API (returns `artifactId`); `language` takes a code, the listed name or the English name and defaults to the account's output language. |
+| `suggest_reports` | NotebookLM's suggested report formats for a source subset (the Reports dialog's "Suggested Template" cards): title, description, audience and a ready-made prompt, plus the notebook summary and suggested questions. Generate one with `generate_studio_artifact` (`report`, `create_your_own`, same `sources`). |
 | `list_studio_artifacts` | Studio library incl. notes: id, type, title, details, status (`ready` / `generating` / `scheduled`). |
 | `list_sources` | Sources with stable id, title, kind and chat selection, plus type, URL (or YouTube channel), word / character counts, status, origin (`research` = marked by NotebookLM as a research import) and date added. |
 | `get_source` | One source in depth for source criticism: metadata, NotebookLM's source guide (summary + keywords) and, with `include_text`, the text NotebookLM actually indexed, in pages. Flags sources with very little indexed text (landing page, abstract, paywall). |
@@ -271,7 +306,7 @@ Refresh the bundled packs with `npm run import:prompts`. `npm run import:prompts
 | Tool | Purpose |
 |---|---|
 | `configure_chat` | Read or set the notebook's persistent system instruction ("Configure Chat": goal, custom prompt, response length). Affects every later answer. |
-| `configure_output_language` | Read or set the account's output language (Settings → Output language): the language of answers and of Studio outputs that name none. With *Default* NotebookLM uses its interface language — English for this server — so set it when users expect another language. Accepts a code (`hu`), the listed name (`magyar`) or the English name (`Hungarian`). |
+| `configure_output_language` | Read or set the account's output language (Settings → Output language): the language of answers and of Studio outputs that name none. With *Default* NotebookLM uses its interface language — English for this server — so set it when users expect another language. Accepts a code (`ja`), the listed name (`日本語`) or the English name (`Japanese`). |
 | `get_usage` | AI usage & limits: rolling window and weekly limit, percent used and reset times. |
 
 NotebookLM meters AI usage (a rolling window that resets every few hours plus a weekly limit) instead of a fixed number of questions per day; when a limit is hit, `ask_question` points to `get_usage` for the reset time.
@@ -503,6 +538,7 @@ Source layout:
 - [`docs/tools.md`](./docs/tools.md) — full per-tool schemas, examples, return shapes.
 - [`docs/troubleshooting.md`](./docs/troubleshooting.md) — common failure modes and fixes.
 - [`docs/usage-guide.md`](./docs/usage-guide.md) — end-to-end walkthroughs.
+- [`skills/notebooklm-workflow/`](./skills/notebooklm-workflow/SKILL.md) — the agent skill: how to work with NotebookLM (source criticism, Configure Chat, reports, Studio prompts, playbooks).
 
 ---
 

@@ -113,8 +113,8 @@ export const generateStudioArtifactTool: Tool = {
       language: {
         type: "string",
         description:
-          'Output language: a code ("hu"), the name NotebookLM lists ("magyar") or the ' +
-          'English name ("Hungarian"); all types except video. Defaults to the account\'s ' +
+          'Output language: a code ("ja"), the name NotebookLM lists ("日本語") or the ' +
+          'English name ("Japanese"); all types except video. Defaults to the account\'s ' +
           "output language (see `configure_output_language`).",
       },
       sources: {
@@ -122,8 +122,14 @@ export const generateStudioArtifactTool: Tool = {
         items: { type: "string" },
         description:
           "Restrict the output to these sources — each entry is a source title (exact or a " +
-          "unique substring) or source id. Omit to use all sources. Very useful in " +
-          "multi-source notebooks. Not available for `report`.",
+          "unique substring) or source id. Omit to use all sources. The most effective way " +
+          "to make an output accurate: pass only the vetted sources relevant to it. Reports " +
+          "take it with document templates (not the interactive learning overview).",
+      },
+      title: {
+        type: "string",
+        description:
+          "report only: the report's title, e.g. a suggestion's title from suggest_reports.",
       },
       template: {
         type: "string",
@@ -132,7 +138,8 @@ export const generateStudioArtifactTool: Tool = {
           "report only. `learning_overview` = interactive report; the others are document " +
           "reports. A `prompt` is appended to the template's built-in instructions; " +
           "`create_your_own` uses the prompt alone (required). Default: learning_overview, or " +
-          "create_your_own when `format: document` and a prompt is given.",
+          "create_your_own when `format: document` and a prompt is given; with `sources` the " +
+          "default is briefing_doc (or create_your_own with a prompt).",
       },
       ask_options: {
         type: "boolean",
@@ -202,8 +209,8 @@ export const configureOutputLanguageTool: Tool = {
     "Read or set the account's output language (NotebookLM Settings → Output language). It " +
     "decides the language of chat answers and of Studio outputs that do not name a " +
     "`language` — for every notebook of the account.\n\n" +
-    'Omit `language` to read it. Pass a code ("hu"), the name NotebookLM lists ("magyar") ' +
-    'or the English name ("Hungarian") to set it, or "default" to remove the override. ' +
+    'Omit `language` to read it. Pass a code ("ja"), the name NotebookLM lists ("日本語") ' +
+    'or the English name ("Japanese") to set it, or "default" to remove the override. ' +
     'With "Default", NotebookLM uses its interface language — and this server runs ' +
     "NotebookLM in English, so answers and Studio outputs come out in English. If the " +
     "user expects another language, set it here (ask the user first: it changes their " +
@@ -254,7 +261,7 @@ export const configureChatTool: Tool = {
         type: "string",
         description:
           "System instruction for the notebook (role, style, tone, output rules), e.g. " +
-          '"You are a senior code reviewer. Answer in Hungarian, max 5 bullet points." ' +
+          '"You are a senior code reviewer. Answer in German, max 5 bullet points." ' +
           'Implies goal "custom" when `goal` is omitted. Max 10 000 chars. ' +
           "Replaces the previous instruction.",
       },
@@ -498,7 +505,42 @@ export const downloadStudioArtifactTool: Tool = {
   },
 };
 
+export const suggestReportsTool: Tool = {
+  name: "suggest_reports",
+  description:
+    'NotebookLM\'s suggested report formats for a set of sources — the "Suggested Template" ' +
+    "cards of the Reports dialog, derived from the content (e.g. a technical analysis, a " +
+    "glossary, a teaching overview, an editorial guideline). Each has a title, description, " +
+    "audience (`general` / `expert`) and a ready-made `prompt`. Also returns the notebook " +
+    "summary and suggested questions.\n\n" +
+    "Pass the vetted `sources` the report should use: the suggestions are made for exactly " +
+    "those. Then generate one with `generate_studio_artifact` (type `report`, template " +
+    "`create_your_own`, the suggestion's prompt — adapted to the user's audience, structure " +
+    "and language if needed — its `title`, and the same `sources`). Uses little AI usage; " +
+    "nothing is generated.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      sources: {
+        type: "array",
+        items: { type: "string" },
+        description: "Source titles or ids the report will use. Omit for all sources.",
+      },
+      ...showBrowser,
+      ...sharedNotebookTargeting,
+    },
+  },
+  annotations: {
+    title: "Suggest report formats",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+};
+
 export const studioTools: Tool[] = [
+  suggestReportsTool,
   deleteSourceTool,
   deleteStudioArtifactTool,
   listSourcesTool,

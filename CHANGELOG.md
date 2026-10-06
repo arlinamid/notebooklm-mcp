@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.1] - 2026-10-06
+## [3.3.0] - 2026-10-06
+
+Source research and vetting, reports from selected sources, and the
+`notebooklm-workflow` agent skill. (3.2.1 was tagged but never published;
+its changes are part of this release.)
 
 ### Added
 
@@ -27,6 +31,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page, abstract or paywall.
 - `get_source` — one source in depth: metadata, NotebookLM's source guide
   (summary and keywords) and the indexed text, in pages.
+- Reports from a subset of sources: `generate_studio_artifact` with
+  `type: "report"` and a document template (`briefing_doc`, `study_guide`,
+  `blog_post`, `create_your_own`) now runs through NotebookLM's data API and
+  takes `sources` — the Reports dialog has no source picker, so this was not
+  possible before. New `title` option.
+- `suggest_reports` — NotebookLM's source-derived report suggestions (the
+  "Suggested Template" cards) for a chosen set of sources, each with a
+  ready-made prompt and audience, plus the notebook summary and suggested
+  questions.
+- Agent skill `notebooklm-workflow` (Agent Skills format), shipped in the
+  package: `npx @arlinamid/notebooklm-mcp skill install` detects the agents
+  on the machine and copies it only for those (`~/.claude/skills`,
+  `~/.agents/skills`, `~/.copilot/skills`, `~/.config/opencode/skills`);
+  `skill zip` builds the Claude Desktop upload. Plugin manifests for Claude,
+  Codex and Cursor and a Gemini CLI extension manifest bundle the server and
+  the skill; the Claude and Codex marketplaces install them from the npm
+  package. From GitHub: `gemini extensions install`, `npx skills add`, or a
+  clone and `node scripts/skill.mjs install`. See the README, "Agent skill
+  and plugins".
 
 ### Changed
 
@@ -35,6 +58,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   added.
 - The server instructions open the source section with source quality:
   vet before each phase of work.
+- Tool descriptions and docs use neutral language examples instead of
+  Hungarian ones.
+- Prompt templates' rendered instructions (`get_prompt_template`, MCP
+  prompts) now ask for `sources` scoped to the output instead of advising
+  against it, and report templates go to `create_your_own`.
+- Documentation: README overview and agent-skill section; usage-guide
+  recipes for finding and vetting sources, reports from selected sources and
+  the skill; troubleshooting for research queries, report sources, tools
+  listed twice and skill installs; every tool and parameter in
+  `docs/tools.md` (38 tools).
 
 ## [3.2.0] - 2026-10-05
 

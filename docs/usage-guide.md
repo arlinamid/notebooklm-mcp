@@ -8,6 +8,8 @@ Practical end-to-end walkthroughs for v3.2. Each section is a self-contained rec
 - [Citations workflow](#citations-workflow)
 - [Audio Overview generation + download](#audio-overview-generation--download)
 - [Studio outputs: generate, wait, download](#studio-outputs-generate-wait-download)
+- [Reports from selected sources](#reports-from-selected-sources)
+- [Agent skill](#agent-skill)
 - [Output language](#output-language)
 - [Multi-account switching](#multi-account-switching)
 - [HTTP transport for n8n / Zapier](#http-transport-for-n8n--zapier)
@@ -134,7 +136,7 @@ Answers, audio and slides can only be as good as the sources, and NotebookLM's o
 Each source has `type`, `url`, `words` and `origin`. A web page or PDF with a few hundred words is usually a landing page, abstract or paywall. Look inside:
 
 ```json
-{ "name": "get_source", "arguments": { "source": "Reconstruction of the Széchenyi", "include_text": true, "max_chars": 3000 } }
+{ "name": "get_source", "arguments": { "source": "High-risk AI systems", "include_text": true, "max_chars": 3000 } }
 ```
 
 `guide` is NotebookLM's own summary and keywords; `text` is what answers are grounded on.
@@ -250,7 +252,7 @@ The result has the absolute `filePath` of the `.m4a`. If you call `download_audi
 
 ## Studio outputs: generate, wait, download
 
-Any Studio type works the same way — here an infographic in Hungarian, square, from one source:
+Any Studio type works the same way — here an infographic in Japanese, square, from one source:
 
 ```json
 {
@@ -258,7 +260,7 @@ Any Studio type works the same way — here an infographic in Hungarian, square,
   "arguments": {
     "type": "infographic", "prompt": "The city's bridges at a glance",
     "orientation": "square", "detail": "concise", "style": "professional",
-    "language": "hu", "sources": ["Chain Bridge – Wikipedia"]
+    "language": "ja", "sources": ["Chain Bridge – Wikipedia"]
   }
 }
 ```
@@ -273,6 +275,48 @@ Slide decks download as PDF (`format: "pptx"` for PowerPoint), reports as Markdo
 
 ---
 
+## Reports from selected sources
+
+A report is usually the most useful Studio output: structured, cited text you can download as Markdown. Write it from the sources it is about, not from the whole notebook — the Reports dialog in the web app has no source picker, but the API call does.
+
+### 1. Let NotebookLM suggest formats for those sources
+
+```json
+{ "name": "suggest_reports", "arguments": { "sources": ["Regulation (EU) 2024/1689", "Commission guidelines"] } }
+```
+
+You get four source-derived suggestions (title, description, audience `general` / `expert`, ready prompt), plus the notebook summary and suggested questions.
+
+### 2. Generate one, adapted
+
+```json
+{
+  "name": "generate_studio_artifact",
+  "arguments": {
+    "type": "report", "template": "create_your_own",
+    "title": "Compliance checklist",
+    "prompt": "<the suggestion's prompt, adapted: audience, sections, length, language>",
+    "sources": ["Regulation (EU) 2024/1689", "Commission guidelines"]
+  }
+}
+```
+
+The built-in templates (`briefing_doc`, `study_guide`, `blog_post`) take `sources` too; a `prompt` is then appended to their own instructions. The interactive `learning_overview` uses the sources checked in the notebook. Poll `list_studio_artifacts`, then `download_studio_artifact` saves the report as Markdown.
+
+---
+
+## Agent skill
+
+The package ships the `notebooklm-workflow` skill, which teaches an agent how to work with these tools: vet sources before each phase, scope every answer and output to its sources, switch the Configure Chat persona per phase, write report and Studio prompts, and save quota. Install it for every agent found on the machine:
+
+```bash
+npx @arlinamid/notebooklm-mcp@latest skill install
+```
+
+See the README, [Agent skill and plugins](../README.md#agent-skill-and-plugins), for plugins, the Gemini CLI extension, the Claude Desktop upload and GitHub installs.
+
+---
+
 ## Output language
 
 Answers and Studio outputs follow the **account's** output language. Check it:
@@ -281,13 +325,13 @@ Answers and Studio outputs follow the **account's** output language. Check it:
 { "name": "configure_output_language", "arguments": {} }
 ```
 
-`language: null` means *Default*: NotebookLM then uses its interface language, which is English for this server — a Hungarian user would get English. Set it (it is an account setting, also in the web app, so ask the user first):
+`language: null` means *Default*: NotebookLM then uses its interface language, which is English for this server — a user who works in, say, Japanese would get English. Set it (it is an account setting, also in the web app, so ask the user first):
 
 ```json
-{ "name": "configure_output_language", "arguments": { "language": "magyar" } }
+{ "name": "configure_output_language", "arguments": { "language": "Japanese" } }
 ```
 
-A single Studio output can override it with `language` (`hu`, `magyar` or `Hungarian` all work).
+A single Studio output can override it with `language` (`ja`, `日本語` or `Japanese` all work).
 
 ---
 
