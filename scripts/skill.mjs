@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
  * Agent skill tooling for skills/<name>/ (Agent Skills format, agentskills.io).
+ * Ships in the npm package, so users run it as
+ * `npx @arlinamid/notebooklm-mcp skill <command>`; in the repository as
+ * `node scripts/skill.mjs <command>` (or the npm scripts skill:*).
  *
- *   node scripts/skill.mjs validate              check skills + plugin manifests
- *   node scripts/skill.mjs zip [--out dir]       Claude app upload ZIP (Settings → Capabilities)
- *   node scripts/skill.mjs install [--agent a,b] [--force] [--dry-run]
+ *   install [--agent a,b] [--force] [--dry-run]   copy the skill into agent skill folders
+ *   zip [--out dir]                               Claude app upload ZIP (Settings → Capabilities)
+ *   path                                          print the bundled skill folder
+ *   validate                                      check skills + plugin manifests (repository)
  *
  * install targets (user scope):
  *   claude  ~/.claude/skills   Claude Code (Cursor reads it too)
@@ -158,11 +162,11 @@ function validateManifests(errors) {
   if (mcp && !mcp.mcpServers?.notebooklm) errors.push("mcp.json: mcpServers.notebooklm is missing");
 }
 
-function validate({ quiet = false } = {}) {
+function validate({ quiet = false, manifests = true } = {}) {
   const errors = [];
   const warnings = [];
   const skills = skillDirs().map((d) => validateSkill(d, errors, warnings)).filter(Boolean);
-  validateManifests(errors);
+  if (manifests) validateManifests(errors);
   for (const w of warnings) console.warn(`⚠ ${w}`);
   if (errors.length) {
     for (const e of errors) console.error(`✖ ${e}`);
@@ -244,7 +248,7 @@ function claudeAppSkillMd(dir, data) {
 function zip(args) {
   const outDir = path.resolve(args.out ?? path.join(ROOT, "dist-skills"));
   fs.mkdirSync(outDir, { recursive: true });
-  for (const { name, data } of validate({ quiet: true })) {
+  for (const { name, data } of validate({ quiet: true, manifests: false })) {
     const dir = path.join(SKILLS, name);
     const entries = walk(dir).map((file) => {
       const rel = path.relative(dir, file).split(path.sep).join("/");
@@ -262,7 +266,7 @@ function zip(args) {
 function install(args) {
   const wanted = (args.agent ?? "claude,agents").split(",").map((s) => s.trim()).filter(Boolean);
   for (const w of wanted) if (!TARGETS[w]) throw new Error(`Unknown agent "${w}" — use ${Object.keys(TARGETS).join(", ")}`);
-  for (const { name } of validate({ quiet: true })) {
+  for (const { name } of validate({ quiet: true, manifests: false })) {
     const src = path.join(SKILLS, name);
     for (const w of wanted) {
       const dest = path.join(TARGETS[w], name);
@@ -284,25 +288,44 @@ function install(args) {
 
 // ---------------------------------------------------------------------------
 
-const [cmd, ...rest] = process.argv.slice(2);
-const args = {};
-for (let i = 0; i < rest.length; i++) {
-  const m = rest[i].match(/^--([^=]+)(?:=(.*))?$/);
-  if (!m) continue;
-  if (m[2] !== undefined) args[m[1]] = m[2];
-  else if (rest[i + 1] && !rest[i + 1].startsWith("--")) args[m[1]] = rest[++i];
-  else args[m[1]] = true;
+const USAGE = `Usage: skill <command>
+  install [--agent claude,agents,copilot] [--force] [--dry-run]
+          claude  ~/.claude/skills   Claude Code
+          agents  ~/.agents/skills   Codex, Gemini CLI, Cursor
+          copilot ~/.copilot/skills  GitHub Copilot
+          (default: claude,agents)
+  zip [--out dir]   ZIP for Claude Desktop / claude.ai (Settings → Capabilities → Skills)
+  path              print the bundled skill folder
+  validate          check skills and plugin manifests (repository)`;
+
+/** Run a skill command; argv without the leading "skill". Returns the exit code. */
+export function runSkillCli(argv) {
+  const [cmd, ...rest] = argv;
+  const args = {};
+  for (let i = 0; i < rest.length; i++) {
+    const m = rest[i].match(/^--([^=]+)(?:=(.*))?$/);
+    if (!m) continue;
+    if (m[2] !== undefined) args[m[1]] = m[2];
+    else if (rest[i + 1] && !rest[i + 1].startsWith("--")) args[m[1]] = rest[++i];
+    else args[m[1]] = true;
+  }
+  try {
+    if (cmd === "validate") validate();
+    else if (cmd === "zip") zip(args);
+    else if (cmd === "install") install(args);
+    else if (cmd === "path") for (const d of skillDirs()) console.log(d);
+    else {
+      console.log(USAGE);
+      return cmd && cmd !== "help" && cmd !== "--help" ? 1 : 0;
+    }
+    return 0;
+  } catch (error) {
+    console.error(`✖ ${error.message}`);
+    return 1;
+  }
 }
 
-try {
-  if (cmd === "validate") validate();
-  else if (cmd === "zip") zip(args);
-  else if (cmd === "install") install(args);
-  else {
-    console.log("Usage: node scripts/skill.mjs validate | zip [--out dir] | install [--agent claude,agents,copilot] [--force] [--dry-run]");
-    process.exit(cmd ? 1 : 0);
-  }
-} catch (error) {
-  console.error(`✖ ${error.message}`);
-  process.exit(1);
+// Direct run: node scripts/skill.mjs <command>
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exit(runSkillCli(process.argv.slice(2)));
 }

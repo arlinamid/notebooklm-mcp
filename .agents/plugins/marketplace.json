@@ -1,11 +1,19 @@
 {
   "name": "arlinamid-notebooklm",
-  "interface": { "displayName": "NotebookLM (arlinamid)" },
+  "interface": {
+    "displayName": "NotebookLM (arlinamid)"
+  },
   "plugins": [
     {
       "name": "notebooklm",
-      "source": { "source": "local", "path": "./" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "source": {
+        "source": "npm",
+        "package": "@arlinamid/notebooklm-mcp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
       "category": "Productivity"
     }
   ]

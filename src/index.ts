@@ -1298,6 +1298,14 @@ async function main() {
     await cli.handleCommand(args);
     process.exit(0);
   }
+  if (args[0] === "skill") {
+    // The agent skill ships in the package (skills/, scripts/skill.mjs).
+    const cliPath = new URL("../scripts/skill.mjs", import.meta.url).href;
+    const { runSkillCli } = (await import(cliPath)) as {
+      runSkillCli: (argv: string[]) => number;
+    };
+    process.exit(runSkillCli(args.slice(1)));
+  }
 
   // Apply --account / NOTEBOOKLM_ACCOUNT before any directory or browser is
   // touched (issue #2). The account-switcher rewrites CONFIG paths so each

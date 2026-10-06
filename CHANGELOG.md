@@ -18,9 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Suggested Template" cards) for a chosen set of sources, each with a
   ready-made prompt and audience, plus the notebook summary and suggested
   questions.
-- Agent skill `notebooklm-workflow` (Agent Skills format) and plugin
-  manifests for Claude, Codex and Cursor; `npm run skill:validate`,
-  `skill:zip`, `skill:install`. See the README, "Agent skill and plugins".
+- Agent skill `notebooklm-workflow` (Agent Skills format), shipped in the
+  package: `npx @arlinamid/notebooklm-mcp skill install` copies it into the
+  agents' skill folders (`~/.claude/skills`, `~/.agents/skills`, optionally
+  `~/.copilot/skills`); `skill zip` builds the Claude Desktop upload. Plugin
+  manifests for Claude, Codex and Cursor bundle the server and the skill;
+  the Claude and Codex marketplaces install them from the npm package. See
+  the README, "Agent skill and plugins".
 
 ### Changed
 

@@ -1,11 +1,17 @@
 {
   "name": "arlinamid-notebooklm",
   "description": "NotebookLM MCP server and agent skill",
-  "owner": { "name": "arlinamid", "url": "https://github.com/arlinamid" },
+  "owner": {
+    "name": "arlinamid",
+    "url": "https://github.com/arlinamid"
+  },
   "plugins": [
     {
       "name": "notebooklm",
-      "source": "./",
+      "source": {
+        "source": "npm",
+        "package": "@arlinamid/notebooklm-mcp"
+      },
       "description": "NotebookLM MCP server + notebooklm-workflow skill: source criticism, phase prompts, Studio outputs, quota and language care."
     }
   ]

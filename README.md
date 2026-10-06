@@ -140,14 +140,23 @@ Run the server in HTTP mode (see [Transports](#transports)) and POST JSON-RPC ag
 
 The tools say *what* NotebookLM can do; the **`notebooklm-workflow` skill** ([`skills/notebooklm-workflow/`](./skills/notebooklm-workflow/SKILL.md)) teaches an agent *how* to work with it: source criticism before every phase, phase-specific Configure Chat prompts, Studio prompts, output language, quota-aware questions and verification — with playbooks for learning, research, work and hobby projects. It follows the open [Agent Skills](https://agentskills.io) format, so it works in any agent that loads skills, and needs the MCP server above.
 
+The skill ships in the npm package, so one command installs it for the agents on the machine — no clone needed:
+
+```bash
+npx @arlinamid/notebooklm-mcp@latest skill install
+```
+
+It copies the skill to `~/.claude/skills` (Claude Code) and `~/.agents/skills` (Codex, Gemini CLI, Cursor); `--agent copilot` adds `~/.copilot/skills`, `--force` replaces an older copy. `skill zip` writes the upload ZIP for Claude Desktop / claude.ai (Settings → Capabilities → Skills; code execution must be on), `skill path` prints the bundled folder.
+
+Plugins bundle the server and the skill; the marketplace installs them from the npm package, so you get the released version:
+
 | Agent | Install |
 |---|---|
-| Claude Code | `claude plugin marketplace add arlinamid/notebooklm-mcp`, then `claude plugin install notebooklm@arlinamid-notebooklm` (server + skill) |
-| Claude Desktop / claude.ai | add the marketplace `arlinamid/notebooklm-mcp` in the plugin settings, or upload the skill ZIP (`npm run skill:zip` → `dist-skills/notebooklm-workflow.zip`) under Settings → Capabilities (code execution must be on) |
-| Codex | `codex plugin marketplace add arlinamid/notebooklm-mcp` (server + skill) |
-| Cursor | the repository is a Cursor plugin (`.cursor-plugin/plugin.json`) |
-| Any agent (skill only) | `npx skills add arlinamid/notebooklm-mcp -g` — installs into the agents' skill folders (`~/.agents/skills` is read by Codex, Gemini CLI and Cursor) |
-| From a clone | `npm run skill:install` copies the skill to `~/.claude/skills` and `~/.agents/skills` (`-- --agent copilot` for `~/.copilot/skills`, `-- --force` to replace) |
+| Claude Code | `claude plugin marketplace add arlinamid/notebooklm-mcp`, then `claude plugin install notebooklm@arlinamid-notebooklm` |
+| Claude Desktop | add the marketplace `arlinamid/notebooklm-mcp` in the plugin settings, or upload the ZIP from `skill zip` |
+| Codex | `codex plugin marketplace add arlinamid/notebooklm-mcp` |
+| Cursor | the package and repository are a Cursor plugin (`.cursor-plugin/plugin.json`) |
+| Any agent, from GitHub | `npx skills add arlinamid/notebooklm-mcp -g` (the skill only) |
 
 The plugins start the server with `npx -y @arlinamid/notebooklm-mcp@latest` ([`mcp.json`](./mcp.json)). If you already configured the server by hand, remove that entry or install the skill alone, so the tools are not listed twice.
 

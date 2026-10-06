@@ -55,7 +55,13 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "docs",
-    "prompts"
+    "prompts",
+    "skills",
+    "scripts/skill.mjs",
+    ".claude-plugin",
+    ".codex-plugin",
+    ".cursor-plugin",
+    "mcp.json"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
