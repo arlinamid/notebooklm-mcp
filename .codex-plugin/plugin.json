@@ -1,6 +1,6 @@
 {
   "name": "notebooklm",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "Google NotebookLM (Gemini Notebook) for agents: the notebooklm MCP server plus the notebooklm-workflow skill — source-vetted research, learning and Studio workflows.",
   "skills": "./skills/",
   "mcpServers": "./mcp.json",
