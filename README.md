@@ -17,18 +17,21 @@
 
 MCP server for Google NotebookLM — rebranded by Google as **Gemini Notebook** and served from `notebook.google.com` since September 2026 (old `notebooklm.google.com` links keep working). It drives a real Chrome via Patchright (stealth + persistent fingerprint) so an agent can:
 
-- chat against a notebook with DOM-level citations, optionally restricted to a subset of sources;
-- add sources (websites, YouTube, pasted text, local files) and remove them;
-- create every Studio output — Audio and Video Overviews, slide decks, mind maps, reports, flashcards, quizzes, infographics, data tables — with their customisation options, and download audio;
+- chat against a notebook with citations, restricted to the sources a question is about;
+- add sources (websites, YouTube, pasted text, local files), inspect what NotebookLM actually indexed, and remove them;
+- find new sources with NotebookLM's Fast / Deep Research (web or Google Drive) and import only the ones you vetted;
+- create every Studio output — Audio and Video Overviews, slide decks, mind maps, reports, flashcards, quizzes, infographics, data tables — from chosen sources, with their customisation options, and download them; get NotebookLM's source-derived report suggestions;
 - save chat answers as notes and turn notes into sources;
-- read or set the notebook's chat system instruction and check AI usage limits;
-- use 130+ curated prompt templates exposed as MCP prompts.
+- read or set the notebook's chat system instruction and output language, and check AI usage limits;
+- use 130+ curated prompt templates exposed as MCP prompts;
+- install the **`notebooklm-workflow` agent skill** — source criticism, phase prompts, reports and Studio workflows — into Claude, Codex, Gemini CLI, Cursor and other agents, or the server and skill together as a plugin / extension.
 
 Two transports are supported: `stdio` (default) and Streamable-HTTP.
 
 - [Requirements](#requirements--platform-support)
 - [Install](#install)
 - [Connect](#connect-to-claude-code) — Claude Code, Cursor, Codex, generic MCP
+- [Agent skill and plugins](#agent-skill-and-plugins)
 - [Authentication](#authentication)
 - [Transports](#transports)
 - [Multi-account](#multi-account)
@@ -535,6 +538,7 @@ Source layout:
 - [`docs/tools.md`](./docs/tools.md) — full per-tool schemas, examples, return shapes.
 - [`docs/troubleshooting.md`](./docs/troubleshooting.md) — common failure modes and fixes.
 - [`docs/usage-guide.md`](./docs/usage-guide.md) — end-to-end walkthroughs.
+- [`skills/notebooklm-workflow/`](./skills/notebooklm-workflow/SKILL.md) — the agent skill: how to work with NotebookLM (source criticism, Configure Chat, reports, Studio prompts, playbooks).
 
 ---
 

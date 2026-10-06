@@ -216,3 +216,22 @@ Every MCP client (Claude Desktop's chat, its Code tab, Cursor, …) starts its o
 - All instances must run a version with this feature (3.2+); an older one opens its own browser.
 - `NOTEBOOKLM_SINGLE_BROWSER=false` turns it off (each instance on its own).
 - A stale `leader.json` from a killed process is detected and replaced automatically.
+
+## Research query refused, or research found nothing
+
+`research_sources` refuses web queries under 4 words (Drive: 2) because every run spends AI usage and vague queries return loosely related pages. Name the subject, the aspect, the kind of source and the timeframe. A run that ends `failed` found nothing — rephrase with different terms (for Drive: words from the files' titles or content) rather than repeating the query; an identical query is answered from the notebook's research history without a new run.
+
+## A report ignores the sources I chose
+
+Pass `sources` with a document template (`briefing_doc`, `study_guide`, `blog_post`, `create_your_own`). The interactive `learning_overview` and the web app's Reports dialog use the sources checked in the notebook. Reports from a subset need NotebookLM's data API, so they are not available with `NOTEBOOKLM_USE_RPC=false`.
+
+## NotebookLM tools are listed twice
+
+The server is configured twice — by hand in the client's MCP settings and again by the plugin or Gemini extension (which start `npx -y @arlinamid/notebooklm-mcp@latest` themselves). Remove one of them; to keep a hand-made configuration, install only the skill (`npx @arlinamid/notebooklm-mcp skill install`).
+
+## The agent does not use the skill
+
+- `npx @arlinamid/notebooklm-mcp skill install --dry-run` shows where it would install. It installs only for agents it finds (their home folders); name others with `--agent`.
+- Restart the agent after installing — skills are read at start-up.
+- Claude Desktop / claude.ai: upload the ZIP from `skill zip` under Settings → Capabilities, with code execution turned on.
+- The skill needs the MCP server connected; it does nothing without the tools.

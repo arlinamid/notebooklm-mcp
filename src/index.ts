@@ -184,6 +184,11 @@ Poll \`list_studio_artifacts\` until the item's status is \`ready\`
 \`download_studio_artifact\` (audio, video, infographic, slides as PDF or
 PPTX, report, data table, quiz, flashcards, mind map).
 
+Reports are the most reusable output. \`suggest_reports\` returns
+NotebookLM's report formats derived from chosen sources, each with a ready
+prompt; generate one with \`type: "report"\`, \`template:
+"create_your_own"\`, that prompt and the same \`sources\`.
+
 Every Studio type (reports with document templates) and \`generate_audio\` accept
 \`sources\` to work from a subset of sources; \`ask_question\` accepts
 \`sources\` too (the notebook's own selection is left as it was).

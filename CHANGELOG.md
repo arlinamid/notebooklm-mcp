@@ -63,6 +63,11 @@ its changes are part of this release.)
 - Prompt templates' rendered instructions (`get_prompt_template`, MCP
   prompts) now ask for `sources` scoped to the output instead of advising
   against it, and report templates go to `create_your_own`.
+- Documentation: README overview and agent-skill section; usage-guide
+  recipes for finding and vetting sources, reports from selected sources and
+  the skill; troubleshooting for research queries, report sources, tools
+  listed twice and skill installs; every tool and parameter in
+  `docs/tools.md` (38 tools).
 
 ## [3.2.0] - 2026-10-05
 
