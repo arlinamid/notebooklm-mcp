@@ -146,7 +146,7 @@ The skill ships in the npm package, so one command installs it for the agents on
 npx @arlinamid/notebooklm-mcp@latest skill install
 ```
 
-It copies the skill to `~/.claude/skills` (Claude Code) and `~/.agents/skills` (Codex, Gemini CLI, Cursor); `--agent copilot` adds `~/.copilot/skills`, `--force` replaces an older copy. `skill zip` writes the upload ZIP for Claude Desktop / claude.ai (Settings → Capabilities → Skills; code execution must be on), `skill path` prints the bundled folder.
+It detects the agents on the machine and copies the skill only for those: `~/.claude/skills` for Claude Code, one shared copy in `~/.agents/skills` for Codex, Gemini CLI and Cursor, `~/.copilot/skills` for GitHub Copilot, `~/.config/opencode/skills` for OpenCode. `--agent claude,codex` picks agents explicitly, `--dry-run` shows what would happen, `--force` replaces an older copy. `skill zip` writes the upload ZIP for Claude Desktop / claude.ai (Settings → Capabilities → Skills; code execution must be on), `skill path` prints the bundled folder.
 
 Plugins bundle the server and the skill; the marketplace installs them from the npm package, so you get the released version:
 
@@ -156,7 +156,12 @@ Plugins bundle the server and the skill; the marketplace installs them from the 
 | Claude Desktop | add the marketplace `arlinamid/notebooklm-mcp` in the plugin settings, or upload the ZIP from `skill zip` |
 | Codex | `codex plugin marketplace add arlinamid/notebooklm-mcp` |
 | Cursor | the package and repository are a Cursor plugin (`.cursor-plugin/plugin.json`) |
-| Any agent, from GitHub | `npx skills add arlinamid/notebooklm-mcp -g` (the skill only) |
+| Gemini CLI | `gemini extensions install https://github.com/arlinamid/notebooklm-mcp` (server + skill; the repository is a Gemini extension) |
+
+From GitHub without npm:
+
+- Clone and run the installer — it has no dependencies: `git clone https://github.com/arlinamid/notebooklm-mcp && node notebooklm-mcp/scripts/skill.mjs install`
+- [`npx skills`](https://github.com/vercel-labs/skills): `npx skills add arlinamid/notebooklm-mcp -g -a claude-code codex` — name the agents you have with `-a`; without it the tool offers every agent it knows.
 
 The plugins start the server with `npx -y @arlinamid/notebooklm-mcp@latest` ([`mcp.json`](./mcp.json)). If you already configured the server by hand, remove that entry or install the skill alone, so the tools are not listed twice.
 

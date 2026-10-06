@@ -5,17 +5,14 @@
  * `npx @arlinamid/notebooklm-mcp skill <command>`; in the repository as
  * `node scripts/skill.mjs <command>` (or the npm scripts skill:*).
  *
- *   install [--agent a,b] [--force] [--dry-run]   copy the skill into agent skill folders
+ *   install [--agent a,b] [--force] [--dry-run]   copy the skill to the agents found (or named)
  *   zip [--out dir]                               Claude app upload ZIP (Settings → Capabilities)
  *   path                                          print the bundled skill folder
  *   validate                                      check skills + plugin manifests (repository)
  *
- * install targets (user scope):
- *   claude  ~/.claude/skills   Claude Code (Cursor reads it too)
- *   agents  ~/.agents/skills   Codex, Gemini CLI, Cursor (vendor-neutral)
- *   copilot ~/.copilot/skills  GitHub Copilot
- * Default: claude + agents. Claude Desktop / claude.ai: upload the ZIP, or add
- * this repository as a plugin marketplace. Others: `npx skills add arlinamid/notebooklm-mcp`.
+ * install detects the agents on the machine (their home folders) and copies
+ * the skill only for those — see AGENTS below. Claude Desktop / claude.ai:
+ * upload the ZIP, or add this repository as a plugin marketplace.
  */
 
 import fs from "node:fs";
@@ -27,11 +24,21 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKILLS = path.join(ROOT, "skills");
 const CLAUDE_APP_DESCRIPTION_MAX = 200;
-const TARGETS = {
-  claude: path.join(os.homedir(), ".claude", "skills"),
-  agents: path.join(os.homedir(), ".agents", "skills"),
-  copilot: path.join(os.homedir(), ".copilot", "skills"),
+/**
+ * Agents and where they read user-level skills. `home` marks the agent as
+ * installed; several agents share the vendor-neutral ~/.agents/skills, so
+ * the skill is copied there once.
+ */
+const HOME = os.homedir();
+const AGENTS = {
+  claude: { label: "Claude Code", home: ".claude", skills: ".claude/skills" },
+  codex: { label: "Codex", home: ".codex", skills: ".agents/skills" },
+  gemini: { label: "Gemini CLI", home: ".gemini", skills: ".agents/skills" },
+  cursor: { label: "Cursor", home: ".cursor", skills: ".agents/skills" },
+  copilot: { label: "GitHub Copilot", home: ".copilot", skills: ".copilot/skills" },
+  opencode: { label: "OpenCode", home: ".config/opencode", skills: ".config/opencode/skills" },
 };
+const installed = (id) => fs.existsSync(path.join(HOME, AGENTS[id].home));
 
 // ---------------------------------------------------------------------------
 // Frontmatter (the YAML subset SKILL.md uses: scalars, `>-` folded blocks, one-level maps)
@@ -152,7 +159,7 @@ function validateManifests(errors) {
       return null;
     }
   };
-  for (const rel of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".cursor-plugin/plugin.json"]) {
+  for (const rel of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".cursor-plugin/plugin.json", "gemini-extension.json"]) {
     const m = json(rel);
     if (m && m.version !== version) errors.push(`${rel}: version ${m.version} ≠ package.json ${version}`);
   }
@@ -264,24 +271,44 @@ function zip(args) {
 // ---------------------------------------------------------------------------
 
 function install(args) {
-  const wanted = (args.agent ?? "claude,agents").split(",").map((s) => s.trim()).filter(Boolean);
-  for (const w of wanted) if (!TARGETS[w]) throw new Error(`Unknown agent "${w}" — use ${Object.keys(TARGETS).join(", ")}`);
+  let ids;
+  if (args.agent && args.agent !== true) {
+    ids = String(args.agent).split(",").map((x) => x.trim()).filter(Boolean);
+    for (const id of ids) {
+      if (!AGENTS[id]) throw new Error(`Unknown agent "${id}" — use ${Object.keys(AGENTS).join(", ")}`);
+    }
+  } else {
+    ids = Object.keys(AGENTS).filter(installed);
+    const missing = Object.keys(AGENTS).filter((id) => !ids.includes(id));
+    console.log(`Agents found: ${ids.map((id) => AGENTS[id].label).join(", ") || "none"}`);
+    if (missing.length) console.log(`Not installed (skipped): ${missing.map((id) => AGENTS[id].label).join(", ")}`);
+    if (ids.length === 0) {
+      throw new Error("No supported agent found — pass --agent (e.g. --agent claude) to install anyway.");
+    }
+  }
+  // One copy per folder, even when several agents read the same one.
+  const folders = new Map();
+  for (const id of ids) {
+    const dir = path.join(HOME, AGENTS[id].skills);
+    folders.set(dir, [...(folders.get(dir) ?? []), AGENTS[id].label]);
+  }
   for (const { name } of validate({ quiet: true, manifests: false })) {
     const src = path.join(SKILLS, name);
-    for (const w of wanted) {
-      const dest = path.join(TARGETS[w], name);
+    for (const [dir, labels] of folders) {
+      const dest = path.join(dir, name);
+      const who = labels.join(", ");
       if (fs.existsSync(dest) && !args.force) {
-        console.log(`• ${w}: ${dest} exists — pass --force to replace it`);
+        console.log(`• ${who}: ${dest} exists — pass --force to replace it`);
         continue;
       }
       if (args["dry-run"]) {
-        console.log(`• ${w}: would copy ${name} → ${dest}`);
+        console.log(`• ${who}: would copy ${name} → ${dest}`);
         continue;
       }
       fs.rmSync(dest, { recursive: true, force: true });
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.mkdirSync(dir, { recursive: true });
       fs.cpSync(src, dest, { recursive: true });
-      console.log(`✔ ${w}: ${name} → ${dest}`);
+      console.log(`✔ ${who}: ${name} → ${dest}`);
     }
   }
 }
@@ -289,11 +316,12 @@ function install(args) {
 // ---------------------------------------------------------------------------
 
 const USAGE = `Usage: skill <command>
-  install [--agent claude,agents,copilot] [--force] [--dry-run]
-          claude  ~/.claude/skills   Claude Code
-          agents  ~/.agents/skills   Codex, Gemini CLI, Cursor
-          copilot ~/.copilot/skills  GitHub Copilot
-          (default: claude,agents)
+  install [--agent claude,codex,gemini,cursor,copilot,opencode] [--force] [--dry-run]
+          default: every agent found on this machine
+          claude   ~/.claude/skills
+          codex, gemini, cursor  ~/.agents/skills (one shared copy)
+          copilot  ~/.copilot/skills
+          opencode ~/.config/opencode/skills
   zip [--out dir]   ZIP for Claude Desktop / claude.ai (Settings → Capabilities → Skills)
   path              print the bundled skill folder
   validate          check skills and plugin manifests (repository)`;
