@@ -11,12 +11,18 @@ description: >-
   review, in any language, or when notebooklm tools are available and the task involves
   documents, learning or research.
 compatibility: >-
-  Needs the notebooklm MCP server (npm @arlinamid/notebooklm-mcp, 3.2.1 or later) connected to
+  Needs the notebooklm MCP server (npm @arlinamid/notebooklm-mcp, 3.3.0 or later) connected to
   the agent and signed in to a Google account. Works with any agent that loads Agent Skills.
-license: MIT
+license: MIT (see LICENSE)
 metadata:
-  author: arlinamid
+  author: János Rózsavölgyi (arlinamid)
   version: "1.0.0"
+  homepage: https://github.com/arlinamid/notebooklm-mcp/tree/main/skills/notebooklm-workflow
+  repository: https://github.com/arlinamid/notebooklm-mcp
+  issues: https://github.com/arlinamid/notebooklm-mcp/issues
+  mcp-server: "@arlinamid/notebooklm-mcp"
+  mcp-server-min-version: "3.3.0"
+  tags: notebooklm, gemini-notebook, research, source-criticism, learning, reports, studio, mcp
   short-description: >-
     Source-vetted NotebookLM workflows for learning, research, work and hobbies: source
     criticism, phase prompts, Studio outputs, quota and language care.

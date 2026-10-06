@@ -30,7 +30,16 @@
     "gemini",
     "gemini-notebook",
     "ai",
-    "claude"
+    "claude",
+    "agent-skill",
+    "skills",
+    "claude-plugin",
+    "codex-plugin",
+    "cursor-plugin",
+    "gemini-cli-extension",
+    "research",
+    "citations",
+    "source-criticism"
   ],
   "author": "János Rózsavölgyi (https://github.com/arlinamid)",
   "contributors": [
@@ -61,7 +70,8 @@
     ".claude-plugin",
     ".codex-plugin",
     ".cursor-plugin",
-    "mcp.json"
+    "mcp.json",
+    "assets"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",

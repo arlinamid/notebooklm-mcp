@@ -5,7 +5,10 @@
   "mcpServers": {
     "notebooklm": {
       "command": "npx",
-      "args": ["-y", "@arlinamid/notebooklm-mcp@latest"]
+      "args": [
+        "-y",
+        "@arlinamid/notebooklm-mcp@latest"
+      ]
     }
   }
 }

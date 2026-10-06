@@ -1,8 +1,8 @@
 {
   "name": "arlinamid-notebooklm",
-  "description": "NotebookLM MCP server and agent skill",
+  "description": "NotebookLM MCP server and the notebooklm-workflow agent skill",
   "owner": {
-    "name": "arlinamid",
+    "name": "János Rózsavölgyi (arlinamid)",
     "url": "https://github.com/arlinamid"
   },
   "plugins": [
@@ -12,7 +12,36 @@
         "source": "npm",
         "package": "@arlinamid/notebooklm-mcp"
       },
-      "description": "NotebookLM MCP server + notebooklm-workflow skill: source criticism, phase prompts, Studio outputs, quota and language care."
+      "displayName": "NotebookLM",
+      "description": "NotebookLM MCP server + notebooklm-workflow skill: source criticism, scoped answers and reports, phase prompts, Studio outputs, quota and language care.",
+      "author": {
+        "name": "János Rózsavölgyi (arlinamid)",
+        "url": "https://github.com/arlinamid"
+      },
+      "homepage": "https://github.com/arlinamid/notebooklm-mcp#readme",
+      "repository": "https://github.com/arlinamid/notebooklm-mcp",
+      "license": "MIT",
+      "keywords": [
+        "notebooklm",
+        "gemini-notebook",
+        "mcp",
+        "agent-skill",
+        "research",
+        "source-criticism",
+        "citations",
+        "study",
+        "reports",
+        "podcast",
+        "audio-overview"
+      ],
+      "category": "productivity",
+      "tags": [
+        "research",
+        "learning",
+        "notebooklm",
+        "mcp",
+        "skill"
+      ]
     }
   ]
 }
