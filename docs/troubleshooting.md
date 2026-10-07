@@ -160,7 +160,7 @@ NOTEBOOKLM_FOLLOW_UP_REMINDER=true npx @arlinamid/notebooklm-mcp@latest
 
 ## AI marker breaks downstream parsing
 
-The default answer text starts with `[AI-GENERATED via Gemini 2.5 (NotebookLM) — …]`. To return to the unprefixed answer, set:
+The default answer text starts with `[AI-GENERATED via Gemini 3.5 family (NotebookLM; Flash or Pro, chosen by Google per task) — …]`. To return to the unprefixed answer, set:
 
 ```bash
 NOTEBOOKLM_AI_MARKER=false npx @arlinamid/notebooklm-mcp@latest

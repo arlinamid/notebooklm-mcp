@@ -14,7 +14,7 @@ export function buildAskQuestionDescription(library: NotebookLibrary): string {
     const topics = getTopicsLine(active);
     const useCases = getUseCaseBullets(active);
 
-    return `# Conversational Research Partner (NotebookLM • Gemini 2.5 • Session RAG)
+    return `# Conversational Research Partner (NotebookLM • Gemini 3.5 • Session RAG)
 
 **Active Notebook:** ${active.name}
 **Content:** ${active.description}
@@ -97,7 +97,7 @@ ${bt}${bt}${bt}
 - Or set notebook_url for ad-hoc notebooks (not in library)
 - If ambiguous which notebook fits, ASK the user which to use`;
   } else {
-    return `# Conversational Research Partner (NotebookLM • Gemini 2.5 • Session RAG)
+    return `# Conversational Research Partner (NotebookLM • Gemini 3.5 • Session RAG)
 
 ## No Active Notebook
 - Visit https://notebook.google.com to create a notebook and get a share link
@@ -249,7 +249,7 @@ export const askQuestionTool: Tool = {
     required: ["question"],
   },
   annotations: {
-    title: "Ask NotebookLM (Gemini 2.5)",
+    title: "Ask NotebookLM (Gemini 3.5)",
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,

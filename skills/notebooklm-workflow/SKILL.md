@@ -143,8 +143,12 @@ prompt. In short:
 ### 3. Ask well (quota-aware)
 
 - Make questions specific and bundle related sub-questions into one request.
-- Reuse `session_id` for follow-ups; `reset_session` when the topic changes (long chats
-  cost more per answer and drift).
+- Reuse `session_id` for follow-ups. The notebook's stored chat is context for every
+  answer, so long chats cost more per answer and drift, and earlier questions keep
+  steering later ones. When the topic or direction changes, read what is there with
+  `get_chat_history` (all of it, however long; `max_turns` for the newest) and, once the
+  user approves, `delete_chat_history` (`backup_dir` keeps a Markdown copy). `reset_session`
+  only reloads the tab — it does not clear the stored chat.
 - Pass the `sources` that the question is about — comparing two documents? select those
   two. Use `source_format: "footnotes"` (or `json`) whenever claims will be reused.
 - Check the answer against its citations: does the excerpt support the claim? Is a key
