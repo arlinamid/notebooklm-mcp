@@ -52,7 +52,14 @@ const TOOL_GROUPS: Record<IconName, string[]> = {
     "search_notebooks",
     "get_library_stats",
   ],
-  chat: ["ask_question", "configure_chat", "configure_output_language", "save_answer_as_note"],
+  chat: [
+    "ask_question",
+    "configure_chat",
+    "configure_output_language",
+    "save_answer_as_note",
+    "get_chat_history",
+    "delete_chat_history",
+  ],
   studio: [
     "generate_studio_artifact",
     "suggest_reports",

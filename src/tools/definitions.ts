@@ -7,6 +7,7 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { NotebookLibrary } from "../library/notebook-library.js";
 import { askQuestionTool, buildAskQuestionDescription } from "./definitions/ask-question.js";
+import { chatHistoryTools } from "./definitions/chat-history.js";
 import { notebookManagementTools } from "./definitions/notebook-management.js";
 import { sessionManagementTools } from "./definitions/session-management.js";
 import { systemTools } from "./definitions/system.js";
@@ -30,5 +31,6 @@ export function buildToolDefinitions(library: NotebookLibrary): Tool[] {
     ...systemTools,
     ...sourceTools,
     ...studioTools,
+    ...chatHistoryTools,
   ];
 }

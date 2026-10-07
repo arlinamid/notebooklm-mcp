@@ -81,6 +81,20 @@ try {
     "add_notebook requires only url + name"
   );
 
+  const getChat = tools.find((t) => t.name === "get_chat_history");
+  const delChat = tools.find((t) => t.name === "delete_chat_history");
+  check(
+    getChat?.annotations?.readOnlyHint === true &&
+      getChat.inputSchema.properties?.destination_dir !== undefined,
+    "get_chat_history is read-only and can save to destination_dir"
+  );
+  check(
+    delChat?.annotations?.destructiveHint === true &&
+      delChat.inputSchema.properties?.confirm !== undefined &&
+      delChat.inputSchema.properties?.backup_dir !== undefined,
+    "delete_chat_history is destructive, takes confirm + backup_dir"
+  );
+
   const { prompts } = await client.listPrompts();
   check(prompts.length > 50, "prompts/list", `${prompts.length} prompts (first page)`);
   const got = await client.getPrompt({ name: prompts[0].name, arguments: {} }).catch((e) => e);

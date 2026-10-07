@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `get_chat_history` — the notebook's whole chat history (questions and
+  answers, oldest first, with timestamps and the source passages behind the
+  `[N]` citations) as Markdown or JSON, returned inline or saved to
+  `destination_dir`. NotebookLM loads long chats lazily; the tool follows the
+  paging cursor of the data API until the oldest page, so the result is
+  complete however long the chat is (`max_turns` keeps only the newest).
+  Read-only; `include_citations: false` makes a much smaller export.
+- `delete_chat_history` — permanently deletes the notebook's chat history
+  (Notebook menu → Delete chat history) so a new line of work starts without
+  the earlier questions as context. Same approval flow as the other deletions:
+  the user is asked through elicitation, otherwise `confirm: true` is required.
+  `backup_dir` saves a Markdown copy first, after the approval. It makes the
+  same data-API call as the web app (`DeleteChatTurns`) and verifies the result
+  by reading the conversation back; if the call fails, the Notebook menu and
+  its confirmation dialog are used instead.
+- `scripts/chat-history-test.mjs` — an offline test of the history reader
+  (paging, `max_turns`, citations, exports) against a fake NotebookLM.
+
+### Changed
+
+- `reset_session` is described for what it does: it reloads the session's tab.
+  It never deleted the notebook's stored conversation, which answers asked over
+  the data API keep continuing — use `delete_chat_history` for that.
+
+- Model labelling: the "Gemini 2.5" text hard-coded since the first release is
+  gone. Answers are now marked "Gemini 3.5 family (NotebookLM; Flash or Pro,
+  chosen by Google per task)", the `_provenance.model` value is
+  `"gemini-3.5-family"` (was `"gemini-2.5"`) and the `ask_question` title and
+  description say "Gemini 3.5". Google does not expose the model: the page,
+  its scripts and the chat RPC carry no model id, and its documentation names
+  only the Gemini 3.5 family (June 2026), with Flash or Pro picked per task
+  and the rollout differing by plan. The label is therefore a family, never a
+  specific variant. Clients matching on `model === "gemini-2.5"` must update.
+
 ## [3.3.1] - 2026-10-06
 
 ### Added

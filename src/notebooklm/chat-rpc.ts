@@ -31,7 +31,12 @@ import type { Citation } from "./citations.js";
 const QUERY_PATH =
   "/_/LabsTailwindUi/data/google.internal.labs.tailwind.orchestration.v1." +
   "LabsTailwindOrchestrationService/GenerateFreeFormStreamed";
-const HEADER = [2, null, [1], [1, null, null, null, null, null, null, null, null, null, [1, 3]]];
+export const HEADER = [
+  2,
+  null,
+  [1],
+  [1, null, null, null, null, null, null, null, null, null, [1, 3]],
+];
 /** Turns of history sent along (each Q and each A counts as one). */
 const HISTORY_TURNS = 20;
 

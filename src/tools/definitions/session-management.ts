@@ -64,10 +64,12 @@ export const sessionManagementTools: Tool[] = [
   {
     name: "reset_session",
     description:
-      "Clear a session's chat history while keeping the same session id. " +
-      "Use this when the task changes mid-conversation and you want a " +
-      "fresh context without losing the underlying browser tab. Ask the " +
-      "user before resetting if they might still need the prior history.",
+      "Reload a session's tab and reset its message counter, keeping the same " +
+      "session id. This does NOT delete the notebook's stored conversation: " +
+      "answers asked over NotebookLM's data API (the default) keep continuing " +
+      "that conversation, earlier questions included. To start a new line of " +
+      "work without them, save a copy with `get_chat_history` if needed and " +
+      "call `delete_chat_history` (the user approves it).",
     inputSchema: {
       type: "object",
       properties: {

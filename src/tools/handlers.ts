@@ -79,6 +79,7 @@ export type ApprovalFn = (
   confirmLabel?: string
 ) => Promise<"approved" | "declined" | "cancelled" | "unsupported">;
 import type { ChatConfigResult, ChatGoal, ChatLength } from "../notebooklm/chat-config.js";
+import type { ChatHistoryExport, DeleteChatHistoryResult } from "../notebooklm/chat-history.js";
 
 /** Metadata proposed by add_notebook when description/topics were omitted. */
 export interface GeneratedMetadata {
@@ -1935,13 +1936,23 @@ export class ToolHandlers {
     approve?: ApprovalFn
   ): Promise<void> {
     const label =
-      target.kind === "source" ? "source" : target.kind === "note" ? "note" : "Studio output";
-    const decision = approve
-      ? await approve(
-          `Permanently delete the ${label} "${target.title}" from this notebook? ` +
-            "This cannot be undone."
-        )
-      : "unsupported";
+      target.kind === "source"
+        ? "source"
+        : target.kind === "note"
+          ? "note"
+          : target.kind === "chat_history"
+            ? "chat history"
+            : "Studio output";
+    // The chat history is the whole conversation, so the prompt says what goes
+    // and what stays; everything else names one entry of the notebook.
+    const question =
+      target.kind === "chat_history"
+        ? `Permanently delete the entire chat history of "${target.title}"? ` +
+          "The conversation cannot be restored; sources, notes and Studio outputs stay. " +
+          "This cannot be undone."
+        : `Permanently delete the ${label} "${target.title}" from this notebook? ` +
+          "This cannot be undone.";
+    const decision = approve ? await approve(question) : "unsupported";
     if (decision === "unsupported") {
       if (confirm !== true) {
         throw new Error(
@@ -2223,6 +2234,64 @@ export class ToolHandlers {
     return this.withNotebookSession("get_usage", args, async (s) => ({
       usage: await s.getUsage(),
     }));
+  }
+
+  /**
+   * Handle get_chat_history — the notebook's whole conversation (every page of
+   * the lazily loaded history) as Markdown or JSON, inline or saved to disk.
+   */
+  async handleGetChatHistory(
+    args: NotebookTargetArgs & {
+      format?: "markdown" | "json";
+      destination_dir?: string;
+      include_citations?: boolean;
+      max_turns?: number;
+    }
+  ): Promise<ToolResult<{ result: ChatHistoryExport }>> {
+    const format = args.format ?? "markdown";
+    if (format !== "markdown" && format !== "json") {
+      return { success: false, error: '`format` must be "markdown" or "json".' };
+    }
+    if (args.max_turns !== undefined && (!Number.isInteger(args.max_turns) || args.max_turns < 1)) {
+      return { success: false, error: "`max_turns` must be a positive integer." };
+    }
+    return this.withNotebookSession("get_chat_history", args, async (s) => ({
+      result: await s.exportChatHistory({
+        format,
+        destinationDir: args.destination_dir,
+        includeCitations: args.include_citations !== false,
+        maxTurns: args.max_turns,
+      }),
+    }));
+  }
+
+  /**
+   * Handle delete_chat_history — permanent; asks the user via MCP elicitation
+   * when the client supports it, else requires `confirm: true`. An optional
+   * Markdown backup is written only after the approval, right before deleting.
+   */
+  async handleDeleteChatHistory(
+    args: NotebookTargetArgs & { backup_dir?: string; confirm?: boolean },
+    approve?: ApprovalFn
+  ): Promise<ToolResult<{ result: DeleteChatHistoryResult & { backup_file?: string } }>> {
+    return this.withNotebookSession("delete_chat_history", args, async (s) => {
+      const info = await s.resolveChatHistoryTarget();
+      const target: DeleteTarget = {
+        id: info.conversationId,
+        title: `${info.title} (${info.messages} messages)`,
+        kind: "chat_history",
+      };
+      await this.requireDeleteApproval(target, args.confirm, approve);
+      const backup = args.backup_dir
+        ? await s.exportChatHistory({
+            format: "markdown",
+            destinationDir: args.backup_dir,
+            includeCitations: true,
+          })
+        : undefined;
+      const result = await s.deleteChatHistory();
+      return { result: { ...result, ...(backup?.file_path && { backup_file: backup.file_path }) } };
+    });
   }
 
   /**

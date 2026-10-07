@@ -441,6 +441,11 @@ export const Selectors = {
   /** Deletion (2026-09): "delete" glyph menu items + confirm dialogs. */
   deletion: {
     menuItem: '[role="menuitem"]:has(mat-icon:text-is("delete"))',
+    /** Notebook menu (`.chat-history-menu`) → "Delete chat history" (enabled once the chat has messages). */
+    chatHistoryMenuItem: [
+      '.chat-history-menu [role="menuitem"]:has(mat-icon:text-is("delete"))',
+      '[role="menuitem"]:has-text("Delete chat history")',
+    ],
     sourceDialogHost: "delete-source",
     studioDialogHost: "delete-dialog",
   },

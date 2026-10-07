@@ -82,7 +82,7 @@ async function clickDeleteMenuItem(page: Page): Promise<void> {
 export interface DeleteTarget {
   id: string;
   title: string;
-  kind: "source" | "studio_item" | "note";
+  kind: "source" | "studio_item" | "note" | "chat_history";
 }
 
 /** Resolve a source reference without changing anything (for approval prompts). */

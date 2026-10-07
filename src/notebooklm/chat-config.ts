@@ -108,7 +108,7 @@ async function readState(page: Page): Promise<Omit<ChatConfigResult, "saved">> {
     );
 }
 
-async function clickVisible(
+export async function clickVisible(
   page: Page,
   selectors: readonly string[],
   label: string

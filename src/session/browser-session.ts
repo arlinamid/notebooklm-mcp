@@ -26,6 +26,16 @@ import {
 } from "../notebooklm/chat.js";
 import { dismissPromoDialogs } from "../notebooklm/dialogs.js";
 import {
+  readChatHistory,
+  exportChatHistory as buildChatExport,
+  resolveChatHistoryTarget,
+  deleteChatHistoryRpc,
+  deleteChatHistoryOnPage,
+  type ChatHistoryExport,
+  type ChatHistoryTarget,
+  type DeleteChatHistoryResult,
+} from "../notebooklm/chat-history.js";
+import {
   generateStudioArtifact,
   listStudioArtifacts,
   type GenerateStudioOptions,
@@ -1289,6 +1299,62 @@ export class BrowserSession {
       if (viaRpc) return viaRpc;
       await dismissPromoDialogs(page);
       return await readUsage(page);
+    });
+  }
+
+  /**
+   * Read the notebook's whole chat — every page of the lazily loaded history —
+   * and return it as Markdown or JSON, or save it into `destinationDir`.
+   */
+  async exportChatHistory(opts: {
+    format: "markdown" | "json";
+    destinationDir?: string;
+    includeCitations: boolean;
+    maxTurns?: number;
+  }): Promise<ChatHistoryExport> {
+    const history = await this.onPage("get_chat_history", (page) =>
+      this.requireRpc("get_chat_history", () =>
+        readChatHistory(page, this.notebookId(), {
+          maxTurns: opts.maxTurns,
+          includeCitations: opts.includeCitations,
+        })
+      )
+    );
+    return await buildChatExport(history, opts.format, opts.destinationDir);
+  }
+
+  /**
+   * Resolve what deleting the chat history would remove, without changing anything.
+   */
+  async resolveChatHistoryTarget(): Promise<ChatHistoryTarget> {
+    return this.onPage("delete_chat_history (resolve)", (page) =>
+      this.requireRpc("delete_chat_history", () =>
+        resolveChatHistoryTarget(page, this.notebookId())
+      )
+    );
+  }
+
+  /**
+   * Delete the notebook's chat history (caller must have user confirmation).
+   */
+  async deleteChatHistory(): Promise<DeleteChatHistoryResult> {
+    return this.onPage("delete_chat_history", async (page) => {
+      const viaRpc = await this.tryRpc("delete_chat_history", () =>
+        deleteChatHistoryRpc(page, this.notebookId())
+      );
+      if (viaRpc) {
+        // The tab still shows the deleted chat until it reloads.
+        this.chatStale = true;
+        return viaRpc;
+      }
+      // Fallback: the menu. Answers asked over RPC are not in the tab's chat
+      // until it reloads, and the entry stays disabled until the tab shows it.
+      if (this.chatStale) {
+        await this.reloadPage(page, 0);
+        this.chatStale = false;
+      }
+      await dismissPromoDialogs(page);
+      return await deleteChatHistoryOnPage(page, this.notebookId());
     });
   }
 

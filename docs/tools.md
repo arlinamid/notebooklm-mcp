@@ -49,7 +49,7 @@ Answers are **Markdown** (e.g. `**bold**`) with `[N]` citation markers; ranges s
   "notebook_url": "https://notebook.google.com/notebook/…",
   "session_info": { "age_seconds": 12, "message_count": 3, "last_activity": 1791190000000 },
   "_provenance": {
-    "provider": "google-notebooklm", "model": "gemini-2.5", "via": "chrome-automation",
+    "provider": "google-notebooklm", "model": "gemini-3.5-family", "via": "chrome-automation",
     "grounding": "user-uploaded-documents", "ai_generated": true
   },
   "source_format": "footnotes",
@@ -631,6 +631,66 @@ NotebookLM keeps a custom prompt stored when the goal is switched back to `defau
 
 ---
 
+## get_chat_history
+
+Read the notebook's whole chat history: every question and answer, oldest first, with timestamps and, for answers, the source passages behind the `[N]` citation markers. The chat history is part of the context every later answer is given, so it is worth reading back before changing direction, and archiving before it is deleted.
+
+NotebookLM loads long chats lazily, page by page as you scroll up. This tool pages through all of it over the data API, so the result is complete however long the chat is. Read-only.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `format` | `markdown` / `json` | no | `markdown` (default) is readable; `json` returns structured turns. |
+| `destination_dir` | string | no | Absolute directory to save into (created if missing; inside the client's file roots). The file is named after the notebook and never overwrites an existing one (` (2)` suffix). Omit to get the content back in the result. |
+| `include_citations` | boolean | no | Attach the cited source passages to answers. Default true; `false` gives a much smaller export. |
+| `max_turns` | integer | no | Keep only the newest N messages (a question and its answer are two). Default: all. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{
+  "result": {
+    "notebook_id": "11111111-…", "notebook_title": "My notebook", "conversation_id": "22222222-…",
+    "messages": 46, "questions": 23, "truncated": false,   // truncated: older messages left out (max_turns)
+    "first_at": "2026-10-06T10:50:43.959Z", "last_at": "2026-10-07T06:44:12.158Z",
+    "format": "markdown",
+    // saved to destination_dir:
+    "file_path": "C:\\exports\\chat-history-My-notebook-20261007-0857.md", "bytes": 48213
+    // or inline: "markdown": "# Chat history — My notebook\n…"  (format json: "history": { "turns": [ … ] })
+  }
+}
+```
+
+Each turn is `{ "n": 1, "role": "user" | "assistant", "at": "<ISO time>", "text": "…", "citations": [ { "number": 1, "source": "<title>", "excerpt": "…" } ] }`. Citations list only the passages the answer's markers refer to. A notebook has one conversation, shared with the NotebookLM web app.
+
+---
+
+## delete_chat_history
+
+**Permanently** delete the notebook's whole chat history (Notebook menu → Delete chat history). Sources, notes and Studio outputs stay. Use it to start a new line of work without the earlier questions steering the answers. `reset_session` does not do this: it only reloads the session's tab.
+
+The approval flow is the same as for `delete_source`: the server asks the user directly (MCP elicitation prompt naming the notebook and the number of messages); on clients without elicitation support `confirm: true` is required, set only after the user explicitly approved. Afterwards NotebookLM is read back to confirm the conversation is empty.
+
+### Parameters
+
+| Name | Type | Required | Notes |
+|---|---|---|---|
+| `backup_dir` | string | no | Absolute directory to save a Markdown copy of the chat into first (after the approval, right before deleting). Same as calling `get_chat_history` beforehand. |
+| `confirm` | boolean | no | Only used when the MCP client cannot show an approval prompt (no elicitation support): then it must be true, set only after explicit user approval. |
+| `session_id`, `notebook_id`, `notebook_url`, `show_browser` | — | no | Notebook targeting, as for the other session tools. |
+
+### Return shape
+
+```jsonc
+{ "result": { "deleted_messages": 46, "backup_file": "C:\\exports\\chat-history-My-notebook-20261007-0857.md" } }   // backup_file only with backup_dir
+```
+
+An empty chat is reported as an error ("no chat history to delete"). The deletion uses the same data-API call as the web app (`DeleteChatTurns`) and is checked by reading the conversation back; if that call fails, the Notebook menu and its confirmation dialog are used instead. The conversation itself stays, empty.
+
+---
+
 ## configure_output_language
 
 Read or set the **account's** output language (Settings → Output language). It decides the language of answers and of Studio outputs that do not name one, for every notebook of the account — also in the NotebookLM web app. With *Default*, NotebookLM uses its interface language, which is English for this server, so a user expecting another language gets English; set an override (after asking the user).
@@ -988,7 +1048,7 @@ Idle sessions older than `session_timeout` are closed automatically; busy ones a
 
 ## reset_session
 
-Clears chat history while keeping the same `session_id`.
+Reloads the session's tab and resets its message counter, keeping the same `session_id`. It does **not** delete the notebook's stored conversation: answers asked over the data API (the default) keep continuing it, earlier questions included. To start without them, use `delete_chat_history` (and `get_chat_history` to keep a copy).
 
 | Name | Type | Required |
 |---|---|---|

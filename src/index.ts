@@ -3,7 +3,7 @@
 /**
  * NotebookLM MCP Server
  *
- * MCP Server for Google NotebookLM - Chat with Gemini 2.5 through NotebookLM
+ * MCP Server for Google NotebookLM - Chat with Gemini 3.5 through NotebookLM
  * with session support and human-like behavior!
  *
  * Features:
@@ -92,7 +92,7 @@ import { OUTPUT_SCHEMAS } from "./tools/output-schemas.js";
 const SERVER_INSTRUCTIONS = `# notebooklm-mcp — research with Google NotebookLM
 
 This server lets an LLM run a fully session-based research workflow against
-a NotebookLM notebook (chat with Gemini 2.5 grounded on user-uploaded
+a NotebookLM notebook (chat with Gemini 3.5 grounded on user-uploaded
 sources, ingest sources, generate Audio Overviews).
 
 ## First-run flow
@@ -123,7 +123,18 @@ audio tools.
 back as \`session_id\` on later \`ask_question\` calls to maintain a
 conversational context (NotebookLM uses session-RAG so follow-ups get
 sharper). \`list_sessions\` enumerates live sessions; \`reset_session\`
-clears chat history (same id), \`close_session\` ends a session.
+reloads a session's tab (same id), \`close_session\` ends a session.
+
+## Chat history
+
+The notebook keeps one conversation, shared with the NotebookLM web app,
+and every new answer is given the latest turns of it as context — so what
+was asked before steers what comes next. \`get_chat_history\` returns all
+of it (long chats are paged through completely; \`max_turns\` keeps the
+newest) as Markdown or JSON, inline or saved to \`destination_dir\`.
+\`delete_chat_history\` erases it so a new line of work starts clean; the
+user approves it, and \`backup_dir\` saves a copy first. \`reset_session\`
+does not touch the stored conversation.
 
 ## Source ingestion (multi-source)
 
@@ -721,10 +732,18 @@ class NotebookLMMCPServer {
     name: string,
     args: Record<string, unknown> | undefined
   ): Promise<void> {
+    // Tools that write into a directory the caller names, and the argument that carries it.
+    const saveArg: Record<string, string> = {
+      download_audio: "destination_dir",
+      download_studio_artifact: "destination_dir",
+      get_chat_history: "destination_dir",
+      delete_chat_history: "backup_dir",
+    };
+    const saveKey = saveArg[name];
+    const saveDir = saveKey && typeof args?.[saveKey] === "string" ? String(args[saveKey]) : null;
     const needsRoots =
       (name === "add_source" && args?.type === "file" && Array.isArray(args.file_paths)) ||
-      ((name === "download_audio" || name === "download_studio_artifact") &&
-        typeof args?.destination_dir === "string");
+      saveDir !== null;
     if (!needsRoots) return;
     const fileRoots = this.conn()?.fileRoots;
     if (!fileRoots) throw new Error("No client connection to check file roots against.");
@@ -733,11 +752,11 @@ class NotebookLMMCPServer {
         await fileRoots.assertAllowed(String(p), "Uploading a local file to NotebookLM");
       }
     }
-    if (
-      (name === "download_audio" || name === "download_studio_artifact") &&
-      typeof args?.destination_dir === "string"
-    ) {
-      await fileRoots.assertAllowed(args.destination_dir, "Saving the downloaded file");
+    if (saveDir !== null) {
+      await fileRoots.assertAllowed(
+        saveDir,
+        name.endsWith("chat_history") ? "Saving the chat history" : "Saving the downloaded file"
+      );
     }
   }
 
@@ -1163,6 +1182,19 @@ class NotebookLMMCPServer {
             );
             break;
 
+          case "get_chat_history":
+            result = await this.toolHandlers.handleGetChatHistory(
+              args as Parameters<ToolHandlers["handleGetChatHistory"]>[0]
+            );
+            break;
+
+          case "delete_chat_history":
+            result = await this.toolHandlers.handleDeleteChatHistory(
+              args as Parameters<ToolHandlers["handleDeleteChatHistory"]>[0],
+              this.askUserApproval
+            );
+            break;
+
           default:
             log.error(`❌ [MCP] Unknown tool: ${name}`);
             return toCallToolResult({ success: false, error: `Unknown tool: ${name}` });
@@ -1411,7 +1443,7 @@ async function main() {
   const pad = Math.max(0, 58 - title.length);
   console.error(`║${" ".repeat(Math.floor(pad / 2))}${title}${" ".repeat(Math.ceil(pad / 2))}║`);
   console.error("║                                                          ║");
-  console.error("║   Chat with Gemini 2.5 through NotebookLM via MCP       ║");
+  console.error("║   Chat with Gemini 3.5 through NotebookLM via MCP       ║");
   console.error("║                                                          ║");
   console.error("╚══════════════════════════════════════════════════════════╝");
   console.error("");
